@@ -26,6 +26,17 @@ echo "sdk.dir=/ścieżka/do/android-sdk" > local.properties
 `assembleRelease` produkuje APK podpisany kluczem debugowym — to build do sideloadu na
 własny telefon, nie do dystrybucji.
 
+### Gotowy APK z CI
+
+Każdy push buduje APK i wystawia go jako artefakt `nightvox-apk` (zakładka **Actions** →
+konkretny przebieg → sekcja *Artifacts*). W środku są dwa pliki: `app-release.apk` (mniejszy,
+z minifikacją — ten do normalnego używania) i `app-debug.apk`.
+
+Klucz debugowy jest trzymany w cache Actions, więc kolejne APK z CI instalują się na wierzch
+poprzednich. Nie da się natomiast zainstalować APK z CI na wierzch zbudowanego lokalnie (i
+odwrotnie) — to inne klucze, Android odrzuci taką aktualizację. Wtedy trzeba najpierw
+odinstalować starą wersję.
+
 ### Pierwsze uruchomienie
 
 1. Przyznaj mikrofon i notyfikacje.
