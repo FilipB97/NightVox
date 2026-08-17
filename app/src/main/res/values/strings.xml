@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NightVox</string>
+
+    <string name="notif_channel_recording_name">Nagrywanie</string>
+    <string name="notif_channel_recording_desc">Trwająca sesja nocna</string>
+    <string name="notif_channel_alerts_name">Ostrzeżenia</string>
+    <string name="notif_channel_alerts_desc">Przerwania, brak miejsca, zakończenie sesji</string>
+
+    <string name="notif_recording_title">NightVox nasłuchuje</string>
+    <string name="notif_action_stop">Zatrzymaj</string>
+</resources>

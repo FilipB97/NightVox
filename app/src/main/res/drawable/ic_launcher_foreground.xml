@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Waveform: cichy sygnał w środku nocy. -->
+    <path
+        android:fillColor="#FF8AB4FF"
+        android:pathData="M35,50h3v8h-3z" />
+    <path
+        android:fillColor="#FF8AB4FF"
+        android:pathData="M42,44h3v20h-3z" />
+    <path
+        android:fillColor="#FFB9C7FF"
+        android:pathData="M49,34h3v40h-3z" />
+    <path
+        android:fillColor="#FFB9C7FF"
+        android:pathData="M56,41h3v26h-3z" />
+    <path
+        android:fillColor="#FF8AB4FF"
+        android:pathData="M63,47h3v14h-3z" />
+    <path
+        android:fillColor="#FF8AB4FF"
+        android:pathData="M70,51h3v6h-3z" />
+</vector>
