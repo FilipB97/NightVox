@@ -19,6 +19,8 @@ import pl.nightvox.data.db.ClipEntity
 import pl.nightvox.encode.Waveform
 import java.io.File
 
+enum class ClipFilter { ALL, FAVORITES, DISCARDED }
+
 data class ClipListItem(
     val clip: ClipEntity,
     val fileExists: Boolean,
@@ -43,17 +45,29 @@ class ClipsViewModel(private val container: AppContainer) : ViewModel() {
     private val repository = container.clipRepository
     val player = ClipPlayer()
 
-    private val _showFavoritesOnly = MutableStateFlow(false)
-    val showFavoritesOnly: StateFlow<Boolean> = _showFavoritesOnly.asStateFlow()
+    private val _filter = MutableStateFlow(ClipFilter.ALL)
+    val filter: StateFlow<ClipFilter> = _filter.asStateFlow()
 
-    val clips: StateFlow<List<ClipListItem>> =
-        combine(repository.clips, _showFavoritesOnly) { all, favoritesOnly ->
-            all.filter { !favoritesOnly || it.isFavorite }
-                .map { clip ->
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val clips: StateFlow<List<ClipListItem>> = _filter
+        .flatMapLatest { filter ->
+            val source = when (filter) {
+                ClipFilter.ALL -> repository.clips
+                ClipFilter.FAVORITES -> repository.favorites
+                ClipFilter.DISCARDED -> repository.discarded
+            }
+            source.map { list ->
+                list.map { clip ->
                     val file = File(clip.filePath)
                     ClipListItem(clip, file.isFile, file.length())
                 }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val discardedCount: StateFlow<Int> = repository.discarded
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val selectedId = MutableStateFlow<String?>(null)
 
@@ -87,8 +101,23 @@ class ClipsViewModel(private val container: AppContainer) : ViewModel() {
         selectedId.value = clipId
     }
 
-    fun toggleFavoritesFilter() {
-        _showFavoritesOnly.value = !_showFavoritesOnly.value
+    fun setFilter(filter: ClipFilter) {
+        _filter.value = filter
+    }
+
+    /** Odrzucony klip okazał się mową — wraca na zwykłą listę. */
+    fun restore(clip: ClipEntity) {
+        viewModelScope.launch {
+            repository.restoreDiscarded(clip)
+            _message.value = "Klip przywrócony"
+        }
+    }
+
+    fun clearDiscarded() {
+        viewModelScope.launch {
+            val deleted = repository.clearDiscarded()
+            _message.value = if (deleted == 0) "Kosz był pusty" else "Usunięto $deleted odrzuconych klipów"
+        }
     }
 
     fun toggleFavorite(clip: ClipEntity) {

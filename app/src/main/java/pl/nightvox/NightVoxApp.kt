@@ -35,7 +35,7 @@ class NightVoxApp : Application() {
             }.onFailure { Log.w(TAG, "Naprawa po crashu nie powiodła się", it) }
 
             runCatching {
-                RetentionWorker.schedule(this@NightVoxApp, container.settingsStore.current().retentionDays)
+                RetentionWorker.schedule(this@NightVoxApp)
             }.onFailure { Log.w(TAG, "Nie udało się zaplanować retencji", it) }
         }
     }

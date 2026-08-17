@@ -176,6 +176,7 @@ class RecorderService : Service() {
         val writer = ClipWriter(
             clipsDir = container.clipsDir,
             sampleRate = config.sampleRate,
+            keepDiscarded = settings.keepDiscardedClips,
             callbacks = writerCallbacks(),
         )
         clipWriter = writer
@@ -235,26 +236,22 @@ class RecorderService : Service() {
 
                     if (++framesSinceUiUpdate >= uiUpdateEvery) {
                         framesSinceUiUpdate = 0
-                        publishLevel(gate, config)
+                        publishLevel(gate)
                     }
                 }
             }
         }
     }
 
-    private fun publishLevel(gate: Gate, config: GateConfig) {
-        val warmupRemaining = if (gate.state == GateState.WARMUP) {
-            (sessionStartedAt + config.warmupMs - System.currentTimeMillis()).coerceAtLeast(0)
-        } else {
-            0L
-        }
+    private fun publishLevel(gate: Gate) {
         RecorderStateHolder.update { current ->
             current.copy(
                 gateState = gate.state,
                 levelDb = gate.lastLevelDb,
                 floorDb = gate.floorDb,
                 thresholdDb = gate.triggerThresholdDb,
-                warmupRemainingMs = warmupRemaining,
+                warmupRemainingMs = if (gate.isWarmingUp) gate.warmupRemainingMs else 0L,
+                levelUpdates = current.levelUpdates + 1,
             )
         }
     }
@@ -313,9 +310,17 @@ class RecorderService : Service() {
             notifications.updateRecordingNotification(RecorderStateHolder.state.value)
         }
 
-        override suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats) {
+        override suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats, file: File?) {
             discardedCount++
-            diagnostics.log("clip", "odrzucony (${reason.name}) voiced=${stats.voicedMs}ms")
+            val sessionId = sessionId
+            if (file != null && sessionId != null) {
+                repository.addClip(sessionId, file, stats, discardReason = reason.name)
+            }
+            diagnostics.log(
+                "clip",
+                "odrzucony (${reason.name}) voiced=${stats.voicedMs}ms " +
+                    "peak=${"%.1f".format(stats.peakDb)} ${if (file != null) "zachowany" else "skasowany"}",
+            )
             RecorderStateHolder.update { it.copy(discardedCount = discardedCount) }
         }
 

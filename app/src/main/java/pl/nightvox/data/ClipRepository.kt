@@ -29,6 +29,7 @@ class ClipRepository(
 
     val clips: Flow<List<ClipEntity>> = clipDao.observeAll()
     val favorites: Flow<List<ClipEntity>> = clipDao.observeFavorites()
+    val discarded: Flow<List<ClipEntity>> = clipDao.observeDiscarded()
     val sessions: Flow<List<SessionWithStats>> = sessionDao.observeAllWithStats()
 
     fun clipsOfSession(sessionId: String): Flow<List<ClipEntity>> = clipDao.observeBySession(sessionId)
@@ -64,7 +65,12 @@ class ClipRepository(
         sessionDao.markEnded(sessionId, System.currentTimeMillis(), reason)
     }
 
-    suspend fun addClip(sessionId: String, file: File, stats: ClipStats): ClipEntity {
+    suspend fun addClip(
+        sessionId: String,
+        file: File,
+        stats: ClipStats,
+        discardReason: String? = null,
+    ): ClipEntity {
         val entity = ClipEntity(
             id = UUID.randomUUID().toString(),
             sessionId = sessionId,
@@ -74,6 +80,8 @@ class ClipRepository(
             peakDb = stats.peakDb,
             meanDb = stats.meanDb,
             voicedMs = stats.voicedMs,
+            isDiscarded = discardReason != null,
+            discardReason = discardReason,
         )
         clipDao.insert(entity)
         sessionDao.refreshClipCount(sessionId)
@@ -81,6 +89,21 @@ class ClipRepository(
     }
 
     suspend fun setFavorite(clipId: String, favorite: Boolean) = clipDao.setFavorite(clipId, favorite)
+
+    /** Przywraca odrzucony klip do zwykłej listy — gdy okaże się, że filtr wyciął mowę. */
+    suspend fun restoreDiscarded(clip: ClipEntity) {
+        clipDao.restore(clip.id)
+        sessionDao.refreshClipCount(clip.sessionId)
+    }
+
+    suspend fun clearDiscarded(): Int {
+        var deleted = 0
+        for (clip in clipDao.allDiscarded()) {
+            deleteClip(clip)
+            if (clipDao.byId(clip.id) == null) deleted++
+        }
+        return deleted
+    }
 
     suspend fun deleteClip(clip: ClipEntity) {
         val file = File(clip.filePath)
@@ -135,16 +158,33 @@ class ClipRepository(
             .toList()
     }
 
-    suspend fun applyRetention(retentionDays: Int, now: Long = System.currentTimeMillis()): Int {
-        if (retentionDays <= NightVoxSettings.RETENTION_NEVER) return 0
-        val cutoff = now - retentionDays * DAY_MS
+    /**
+     * Kosz „Odrzucone” ma własny, krótszy termin: służy do strojenia progów, więc trzymanie
+     * go przez 30 dni jak zwykłych nagrań byłoby zbieractwem.
+     */
+    suspend fun applyRetention(
+        retentionDays: Int,
+        discardedRetentionDays: Int = retentionDays,
+        now: Long = System.currentTimeMillis(),
+    ): Int {
         var deleted = 0
-        for (clip in clipDao.expired(cutoff)) {
-            val before = clipDao.byId(clip.id)
-            deleteClip(clip)
-            if (before != null && clipDao.byId(clip.id) == null) deleted++
+
+        if (retentionDays > NightVoxSettings.RETENTION_NEVER) {
+            deleted += deleteAll(clipDao.expired(now - retentionDays * DAY_MS))
         }
-        sessionDao.deleteEmptyFinishedSessions()
+        if (discardedRetentionDays > NightVoxSettings.RETENTION_NEVER) {
+            deleted += deleteAll(clipDao.expiredDiscarded(now - discardedRetentionDays * DAY_MS))
+        }
+        if (deleted > 0) sessionDao.deleteEmptyFinishedSessions()
+        return deleted
+    }
+
+    private suspend fun deleteAll(clips: List<ClipEntity>): Int {
+        var deleted = 0
+        for (clip in clips) {
+            deleteClip(clip)
+            if (clipDao.byId(clip.id) == null) deleted++
+        }
         return deleted
     }
 

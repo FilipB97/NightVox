@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -42,6 +43,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.nightvox.ui.components.EmptyState
+import pl.nightvox.ui.components.NoticeCard
+import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.SectionHeader
 import pl.nightvox.ui.components.StatTile
 import pl.nightvox.ui.components.WaveformView
@@ -127,6 +130,23 @@ fun ClipDetailScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            if (current.clip.isDiscarded) {
+                Spacer(Modifier.height(12.dp))
+                NoticeCard(
+                    icon = Icons.Filled.FilterAlt,
+                    title = "Odrzucony przez bramkę",
+                    text = when (current.clip.discardReason) {
+                        "TOO_SHORT" -> "Sumaryczny czas ramek powyżej progu (${current.clip.voicedMs} ms) " +
+                            "nie osiągnął minVoicedMs. Jeśli to jednak wypowiedź — obniż minVoicedMs " +
+                            "albo próg i przywróć klip."
+                        else -> "Powód: ${current.clip.discardReason ?: "nieznany"}"
+                    },
+                    tone = NoticeTone.WARNING,
+                    actionLabel = "Przywróć do klipów",
+                    onAction = { viewModel.restore(current.clip) },
+                )
+            }
 
             Spacer(Modifier.height(20.dp))
 

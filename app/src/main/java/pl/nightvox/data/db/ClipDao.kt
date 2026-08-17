@@ -18,13 +18,17 @@ interface ClipDao {
     @Query("SELECT * FROM clips WHERE id = :id")
     fun observeById(id: String): Flow<ClipEntity?>
 
-    @Query("SELECT * FROM clips ORDER BY startedAt DESC")
+    @Query("SELECT * FROM clips WHERE isDiscarded = 0 ORDER BY startedAt DESC")
     fun observeAll(): Flow<List<ClipEntity>>
 
-    @Query("SELECT * FROM clips WHERE isFavorite = 1 ORDER BY startedAt DESC")
+    @Query("SELECT * FROM clips WHERE isDiscarded = 0 AND isFavorite = 1 ORDER BY startedAt DESC")
     fun observeFavorites(): Flow<List<ClipEntity>>
 
-    @Query("SELECT * FROM clips WHERE sessionId = :sessionId ORDER BY startedAt ASC")
+    /** Kosz: co bramka wyrzuciła. Do przeglądania przy strojeniu progów. */
+    @Query("SELECT * FROM clips WHERE isDiscarded = 1 ORDER BY startedAt DESC")
+    fun observeDiscarded(): Flow<List<ClipEntity>>
+
+    @Query("SELECT * FROM clips WHERE sessionId = :sessionId AND isDiscarded = 0 ORDER BY startedAt ASC")
     fun observeBySession(sessionId: String): Flow<List<ClipEntity>>
 
     @Query("SELECT * FROM clips WHERE sessionId = :sessionId ORDER BY startedAt ASC")
@@ -33,18 +37,34 @@ interface ClipDao {
     @Query("UPDATE clips SET isFavorite = :favorite WHERE id = :id")
     suspend fun setFavorite(id: String, favorite: Boolean)
 
+    /** Przywraca odrzucony klip do zwykłej listy — gdy okaże się, że filtr wyciął mowę. */
+    @Query("UPDATE clips SET isDiscarded = 0, discardReason = NULL WHERE id = :id")
+    suspend fun restore(id: String)
+
     @Query("UPDATE clips SET transcript = :transcript WHERE id = :id")
     suspend fun setTranscript(id: String, transcript: String?)
 
     @Query("DELETE FROM clips WHERE id = :id")
     suspend fun delete(id: String)
 
-    /** Kandydaci do retencji — ulubione nigdy nie kasowane (§5). */
-    @Query("SELECT * FROM clips WHERE startedAt < :olderThan AND isFavorite = 0")
+    /**
+     * Kandydaci do retencji. Ulubione nigdy nie są kasowane (§5); odrzucone mają własny,
+     * krótszy termin — kosz ma służyć do strojenia, nie rosnąć bez końca.
+     */
+    @Query("SELECT * FROM clips WHERE startedAt < :olderThan AND isFavorite = 0 AND isDiscarded = 0")
     suspend fun expired(olderThan: Long): List<ClipEntity>
 
-    @Query("SELECT COUNT(*) FROM clips")
+    @Query("SELECT * FROM clips WHERE startedAt < :olderThan AND isFavorite = 0 AND isDiscarded = 1")
+    suspend fun expiredDiscarded(olderThan: Long): List<ClipEntity>
+
+    @Query("SELECT * FROM clips WHERE isDiscarded = 1")
+    suspend fun allDiscarded(): List<ClipEntity>
+
+    @Query("SELECT COUNT(*) FROM clips WHERE isDiscarded = 0")
     fun observeCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM clips WHERE isDiscarded = 1")
+    fun observeDiscardedCount(): Flow<Int>
 
     @Query("SELECT * FROM clips")
     suspend fun all(): List<ClipEntity>

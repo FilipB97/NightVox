@@ -34,11 +34,19 @@ class ClipWriter(
     private val sampleRate: Int,
     private val bitRate: Int = AacEncoder.DEFAULT_BIT_RATE,
     private val minFreeBytes: Long = MIN_FREE_BYTES,
+    /**
+     * Czy zachowywać nagrania odrzucone przez bramkę. Dopóki progi nie są dostrojone,
+     * najważniejsze pytanie brzmi „czy filtr nie wyrzuca mowy” — a bez pliku nie da się
+     * na nie odpowiedzieć.
+     */
+    private val keepDiscarded: Boolean = true,
     private val callbacks: Callbacks,
 ) {
     interface Callbacks {
         suspend fun onClipFinished(clip: FinishedClip)
-        suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats)
+
+        /** [file] jest `null`, gdy zachowywanie odrzuconych jest wyłączone. */
+        suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats, file: File?)
         suspend fun onWriterError(message: String, cause: Throwable?)
 
         /** Za mało miejsca na dysku — sesja powinna się zakończyć (§6.5). */
@@ -87,11 +95,17 @@ class ClipWriter(
                     accumulator?.add(action.samples)
                 }
             }
-            is GateAction.CloseClip -> closeClip(action.stats)
-            is GateAction.DiscardClip -> {
-                abortOpenEncoder()
-                if (!skipCurrentClip) callbacks.onClipDiscarded(action.reason, action.stats)
+            is GateAction.CloseClip -> {
+                val file = finalizeFile()
                 skipCurrentClip = false
+                if (file != null) callbacks.onClipFinished(FinishedClip(file, action.stats))
+            }
+
+            is GateAction.DiscardClip -> {
+                val wasSkipped = skipCurrentClip
+                val file = if (keepDiscarded) finalizeFile() else { abortOpenEncoder(); null }
+                skipCurrentClip = false
+                if (!wasSkipped) callbacks.onClipDiscarded(action.reason, action.stats, file)
             }
         }
     }
@@ -119,25 +133,22 @@ class ClipWriter(
         }
     }
 
-    private suspend fun closeClip(stats: ClipStats) {
-        val enc = encoder
+    /** Domyka enkoder i zwraca gotowy plik, albo `null`, jeśli nic nadającego się nie powstało. */
+    private suspend fun finalizeFile(): File? {
+        val enc = encoder ?: return null
         val acc = accumulator
         encoder = null
         accumulator = null
-        if (enc == null) {
-            skipCurrentClip = false
-            return
-        }
+
         val playable = enc.finish()
         if (!playable || !enc.outputFile.isFile || enc.outputFile.length() == 0L) {
             enc.outputFile.delete()
+            Waveform.delete(enc.outputFile)
             callbacks.onWriterError("Klip ${enc.outputFile.name} wyszedł pusty — pomijam", null)
-            skipCurrentClip = false
-            return
+            return null
         }
         acc?.let { Waveform.write(enc.outputFile, it.toByteArray()) }
-        callbacks.onClipFinished(FinishedClip(enc.outputFile, stats))
-        skipCurrentClip = false
+        return enc.outputFile
     }
 
     private fun abortOpenEncoder() {

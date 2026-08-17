@@ -22,6 +22,12 @@ data class RecorderState(
     val levelDb: Float = LevelMeter.MIN_DBFS,
     val floorDb: Float = LevelMeter.MIN_DBFS,
     val thresholdDb: Float = LevelMeter.MIN_DBFS,
+    /**
+     * Rośnie z każdym pomiarem poziomu. Live meter dopisuje słupek tylko wtedy, gdy ten
+     * licznik drgnie — inaczej wykres przewijałby się także przy zdarzeniach niezwiązanych
+     * z dźwiękiem (zamknięty klip, zmiana wolnego miejsca).
+     */
+    val levelUpdates: Long = 0,
     val clipCount: Int = 0,
     val discardedCount: Int = 0,
     val interruptions: Int = 0,

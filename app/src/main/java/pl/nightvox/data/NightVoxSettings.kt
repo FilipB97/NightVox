@@ -21,6 +21,14 @@ data class NightVoxSettings(
     val autoStopMinute: Int = 0,
     val maxSessionHours: Int = 10,
     val retentionDays: Int = 30,
+    /**
+     * Zachowuj nagrania odrzucone przez bramkę zamiast je kasować. Domyślnie włączone:
+     * przy nieustrojonych progach ważniejsze jest zobaczyć, co filtr wyrzuca, niż oszczędzić
+     * kilka megabajtów.
+     */
+    val keepDiscardedClips: Boolean = true,
+    /** Kosz ma służyć do strojenia, nie rosnąć bez końca. */
+    val discardedRetentionDays: Int = 7,
     val keepScreenOn: Boolean = false,
     /** Dump całej sesji do WAV — do debugowania progów, zjada ok. 115 MB/h. */
     val debugWavDump: Boolean = false,
@@ -47,6 +55,7 @@ data class NightVoxSettings(
         val MIN_VOICED_RANGE_MS = 100L..2_000L
         val MAX_CLIP_RANGE_MS = 30_000L..600_000L
         val RETENTION_RANGE_DAYS = 1..365
+        val DISCARDED_RETENTION_RANGE_DAYS = 1..30
 
         /** Wartość `retentionDays` oznaczająca „nigdy nie kasuj”. */
         const val RETENTION_NEVER = 0

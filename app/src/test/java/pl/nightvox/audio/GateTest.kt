@@ -233,6 +233,31 @@ class GateTest {
         assertEquals(1, harness.clips.size)
     }
 
+    /**
+     * Odliczanie warm-upu idzie po przetworzonych ramkach, nie po zegarku. Gdyby liczyło
+     * czas od startu sesji, przerwanie mikrofonu w trakcie pomiaru tła pokazywałoby zero
+     * mimo że tło wciąż nie jest zmierzone.
+     */
+    @Test
+    fun `odliczanie warm-upu idzie za ramkami a nie zegarem`() {
+        val cfg = config(warmupMs = 2_000)
+        val harness = GateHarness(cfg)
+
+        assertEquals(2_000L, harness.gate.warmupRemainingMs)
+
+        harness.feed(noise(msToSamples(1_000), floorDb))
+        assertEquals(
+            "Po sekundzie ramek powinna zostać sekunda warm-upu",
+            1_000L,
+            harness.gate.warmupRemainingMs,
+        )
+        assertTrue(harness.gate.isWarmingUp)
+
+        harness.feed(noise(msToSamples(1_000), floorDb))
+        assertEquals(0L, harness.gate.warmupRemainingMs)
+        assertEquals(GateState.IDLE, harness.gate.state)
+    }
+
     @Test
     fun `statystyki klipu odpowiadaja zawartosci`() {
         val cfg = config()

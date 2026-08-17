@@ -133,6 +133,50 @@ class ClipRepositoryInstrumentedTest {
         assertEquals(ClipRepository.END_REASON_CRASH, session.endReason)
     }
 
+    /** Kosz „Odrzucone”: osobna lista, własna retencja, możliwość przywrócenia. */
+    @Test
+    fun odrzucone_klipy_maja_wlasna_liste_i_daja_sie_przywrocic() = runBlocking {
+        val sessionId = repository.startSession(NightVoxSettings.DEFAULTS, -60f)
+        repository.addClip(sessionId, newClipFile("mowa"), stats(startedAt = 1_000))
+        val rejected = repository.addClip(
+            sessionId,
+            newClipFile("trzask"),
+            stats(startedAt = 2_000),
+            discardReason = "TOO_SHORT",
+        )
+
+        assertEquals(1, repository.clips.first().size)
+        assertEquals(listOf(rejected.id), repository.discarded.first().map { it.id })
+        // Odrzucone nie liczą się do bilansu nocy.
+        assertEquals(1, repository.sessions.first().single().clipCount)
+
+        repository.restoreDiscarded(rejected)
+
+        assertEquals(2, repository.clips.first().size)
+        assertTrue(repository.discarded.first().isEmpty())
+        assertEquals(2, repository.sessions.first().single().clipCount)
+    }
+
+    @Test
+    fun retencja_kosza_jest_krotsza_niz_zwyklych_klipow() = runBlocking {
+        val sessionId = repository.startSession(NightVoxSettings.DEFAULTS, -60f)
+        val tenDaysAgo = System.currentTimeMillis() - 10L * 24 * 60 * 60 * 1000
+
+        val normal = repository.addClip(sessionId, newClipFile("normalny"), stats(startedAt = tenDaysAgo))
+        val rejected = repository.addClip(
+            sessionId,
+            newClipFile("odrzucony"),
+            stats(startedAt = tenDaysAgo),
+            discardReason = "TOO_SHORT",
+        )
+
+        val deleted = repository.applyRetention(retentionDays = 30, discardedRetentionDays = 7)
+
+        assertEquals(1, deleted)
+        assertNotNull("Zwykły klip padł ofiarą retencji kosza", repository.clip(normal.id))
+        assertNull("Odrzucony klip przetrwał własną retencję", repository.clip(rejected.id))
+    }
+
     @Test
     fun osierocone_pliki_sa_wykrywane() = runBlocking {
         val sessionId = repository.startSession(NightVoxSettings.DEFAULTS, -60f)
