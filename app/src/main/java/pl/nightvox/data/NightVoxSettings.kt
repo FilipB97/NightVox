@@ -29,6 +29,13 @@ data class NightVoxSettings(
     val keepDiscardedClips: Boolean = true,
     /** Kosz ma służyć do strojenia, nie rosnąć bez końca. */
     val discardedRetentionDays: Int = 7,
+    /**
+     * Silero VAD jako drugi stopień detekcji. Klipy poniżej progu trafiają do „Odrzucone”,
+     * nigdy nie są kasowane — Silero potrafi wziąć chrapanie za mowę i odwrotnie, więc to
+     * jest filtr miękki, nie wyrok.
+     */
+    val vadEnabled: Boolean = true,
+    val vadThreshold: Float = 0.5f,
     val keepScreenOn: Boolean = false,
     /** Dump całej sesji do WAV — do debugowania progów, zjada ok. 115 MB/h. */
     val debugWavDump: Boolean = false,
@@ -56,6 +63,7 @@ data class NightVoxSettings(
         val MAX_CLIP_RANGE_MS = 30_000L..600_000L
         val RETENTION_RANGE_DAYS = 1..365
         val DISCARDED_RETENTION_RANGE_DAYS = 1..30
+        val VAD_THRESHOLD_RANGE = 0.1f..0.9f
 
         /** Wartość `retentionDays` oznaczająca „nigdy nie kasuj”. */
         const val RETENTION_NEVER = 0

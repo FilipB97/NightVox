@@ -7,8 +7,8 @@ listę kilku–kilkudziesięciu klipów po kilkanaście sekund zamiast ośmiu go
 Wszystko zostaje lokalnie. Apka **nie ma uprawnienia `INTERNET`** — nagrania fizycznie nie
 mogą opuścić telefonu inaczej niż przez świadome udostępnienie pliku.
 
-Implementacja realizuje [`plan.md`](plan.md). Stan: **fazy 0–2 zrobione**, faza 3 (VAD,
-transkrypcja, Telegram) nie jest zaczęta — szczegóły niżej.
+Implementacja realizuje [`plan.md`](plan.md). Stan: **fazy 0–2 zrobione**, z fazy 3 gotowy
+jest **Silero VAD**; transkrypcja i Telegram nie są zaczęte — szczegóły niżej.
 
 ---
 
@@ -78,8 +78,9 @@ i sama się nie wyciszyła.
 ### Cała logika decyzyjna jest czystym Kotlinem
 
 `Gate`, `RingBuffer`, `NoiseFloorTracker`, `LevelMeter`, `GateConfig` nie mają żadnej
-zależności od Androida. Dzięki temu 30 testów przechodzi na JVM w kilka sekund, bez
-emulatora — łącznie z kryteriami akceptacji fazy 1 z planu:
+zależności od Androida — łącznie z `VadChunker`, czyli logiką, która najłatwiej psuje się
+po cichu. Dzięki temu 45 testów przechodzi na JVM w kilka sekund, bez emulatora —
+łącznie z kryteriami akceptacji fazy 1 z planu:
 
 | Test | Co sprawdza |
 |---|---|
@@ -92,10 +93,17 @@ emulatora — łącznie z kryteriami akceptacji fazy 1 z planu:
 | `ciagly halas jest ciety na maxClipMs` | 45 s ciągłego dźwięku → kilka klipów, żaden dłuższy niż limit |
 | `tlo nie rosnie podczas dlugiej wypowiedzi` | 30 s mówienia → tło stoi |
 | `odliczanie warm-upu idzie za ramkami a nie zegarem` | warm-up liczony przetworzonymi ramkami, nie czasem od startu |
+| `kontekst kolejnego chunka to ogon poprzedniego` | układ wejścia VAD: 64 próbki kontekstu + 512 chunka |
+| `krotka mowa w dlugiej ciszy przezywa jako maksimum` | `vadScore` to maksimum, nie średnia |
 
 Testy instrumentacyjne (`app/src/androidTest`) wymagają urządzenia lub emulatora i
 pokrywają integralność `.m4a` (`MediaExtractor` odczytuje zadeklarowaną długość), Room,
-retencję i cykl życia serwisu.
+retencję, cykl życia serwisu oraz Silero VAD na prawdziwym ONNX Runtime.
+
+Ograniczenie testów VAD, o którym trzeba wiedzieć: sygnał jest **syntetyczny** (model
+źródło-filtr), a Silero jest trenowany na prawdziwej mowie. Testy potwierdzają, że wrapper
+jest podpięty poprawnie — zwłaszcza kontekst chunków — ale **nie** mierzą skuteczności VAD
+na mamrotaniu przez sen. To da się ocenić dopiero na nagraniach z kosza „Odrzucone”.
 
 ---
 
@@ -146,6 +154,8 @@ Bez frameworka DI — `AppContainer` w zupełności wystarcza przy tej liczbie o
 | `mergeGapMs` | 2000 | 0–5000 |
 | `minVoicedMs` | 400 | 100–2000 |
 | `maxClipMs` | 120 s | 30–600 s |
+| `vadEnabled` | włączony | — |
+| `vadThreshold` | 0.5 | 0.1–0.9 |
 | auto-stop | 09:00 / max 10 h | — |
 | `retentionDays` | 30 | 0 (nigdy) – 365 |
 | `discardedRetentionDays` | 7 | 1–30 |
@@ -156,6 +166,29 @@ jakich progach powstała każda noc. Ulubione klipy nie są kasowane przez reten
 Klipy: AAC-LC 32 kbps mono 16 kHz w `filesDir/clips/{yyyy-MM-dd}/{HHmmss}.m4a`, ok. 240 kB
 na minutę. Obok każdego pliku leży `.peaks` — obwiednia liczona przy zapisie, żeby
 rysowanie waveformu nie wymagało ponownego dekodowania.
+
+### Silero VAD (faza 3)
+
+Drugi stopień detekcji: tania bramka RMS wybudza sieć, sieć ocenia, czy to naprawdę mowa.
+Model (`silero_vad_16k.onnx`, 1,26 MB, MIT) leży w `assets` i chodzi lokalnie przez ONNX
+Runtime — apka nadal nie ma uprawnienia `INTERNET`. Analiza kosztuje tylko w trakcie
+nagrywania klipu, bo VAD dostaje ten sam PCM co enkoder, na tym samym wątku.
+
+Wynik (`Clip.vadScore`) to **maksimum** prawdopodobieństwa w klipie, nie średnia:
+mamrotanie przez sen to zwykle dwa słowa w kilkusekundowym nagraniu, więc średnia
+rozmyłaby je do zera. Klip poniżej progu trafia do kosza „Odrzucone” — **nigdy nie jest
+kasowany** — skąd da się go odsłuchać i przywrócić. Silero potrafi wziąć chrapanie za mowę
+i przegapić ciche mamrotanie, więc to filtr miękki, nie wyrok.
+
+**Uwaga dla modyfikujących:** model v5 wymaga wejścia `kontekst (64 próbki) + chunk (512)`
+= 576 próbek, gdzie kontekst to ogon poprzedniego chunka. Karmiony samym chunkiem zwraca
+~0.001 **na wszystko**, łącznie z mową — psuje się bezobjawowo. Dlatego to jest osobna
+czysta klasa `VadChunker` z własnymi testami, a nie kilka linijek w wrapperze ONNX.
+
+ONNX Runtime wnosi ok. 70 MB natywnych bibliotek na cztery architektury, więc APK jest
+ograniczony do `arm64-v8a` (release) i dodatkowo `x86_64` w debugu, żeby działał emulator
+CI. Release waży przez to ~22 MB zamiast ~130 MB. Urządzenie 32-bitowe wymaga dołożenia
+`armeabi-v7a` w `app/build.gradle.kts`.
 
 ### Kosz „Odrzucone”
 
@@ -168,13 +201,8 @@ wyłączyć w Ustawieniach.
 
 ---
 
-## Czego tu nie ma (faza 3)
+## Czego tu nie ma (reszta fazy 3)
 
-Świadomie nie zaczęte, zgodnie z zaleceniem planu, żeby przespać z fazą 1 jedną noc przed
-pisaniem czegokolwiek dalej:
-
-- **Silero VAD** — schemat bazy ma już pole `Clip.vadScore`, żeby dołożenie go nie wymagało
-  migracji.
 - **Transkrypcja (whisper.cpp)** — pole `Clip.transcript` czeka; ekran klipu ma sekcję
   „Transkrypcja” z jawną informacją, że to faza 3.
 - **Telegram** — wymaga uprawnienia `INTERNET`, które jest w manifeście **zakomentowane**.
