@@ -29,10 +29,13 @@ import pl.nightvox.audio.GateConfig
 import pl.nightvox.audio.GateState
 import pl.nightvox.audio.NoiseFloorTracker
 import pl.nightvox.audio.RingBuffer
+import pl.nightvox.audio.vad.SileroVad
+import pl.nightvox.audio.vad.VadResult
 import pl.nightvox.data.ClipRepository
 import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.encode.ClipWriter
 import pl.nightvox.encode.FinishedClip
+import pl.nightvox.encode.SileroSpeechDetector
 import pl.nightvox.encode.WavDumpWriter
 import pl.nightvox.util.DiagnosticsLog
 import java.io.File
@@ -76,6 +79,7 @@ class RecorderService : Service() {
     private var interruptions = 0
     private var clipCount = 0
     private var discardedCount = 0
+    private var vadActive = false
     private var stopping = false
 
     private sealed interface PipelineEvent {
@@ -153,7 +157,7 @@ class RecorderService : Service() {
 
             val id = repository.startSession(settings, noiseFloorDb = 0f)
             sessionId = id
-            diagnostics.log("session", "start id=$id config=$config")
+            diagnostics.log("session", "start id=$id config=$config vad=${settings.vadEnabled}")
             RecorderStateHolder.update { it.copy(sessionId = id, startedAtMs = sessionStartedAt) }
 
             acquireWakeLock()
@@ -173,10 +177,22 @@ class RecorderService : Service() {
         )
         gate = newGate
 
+        val detector = if (settings.vadEnabled) {
+            SileroVad.create(this, config.sampleRate)?.let { vad ->
+                SileroSpeechDetector(vad, config.sampleRate, settings.vadThreshold)
+            }.also {
+                if (it == null) diagnostics.log("vad", "model niedostępny — zostaje sama bramka RMS")
+            }
+        } else {
+            null
+        }
+        vadActive = detector != null
+
         val writer = ClipWriter(
             clipsDir = container.clipsDir,
             sampleRate = config.sampleRate,
             keepDiscarded = settings.keepDiscardedClips,
+            speechDetector = detector,
             callbacks = writerCallbacks(),
         )
         clipWriter = writer
@@ -298,28 +314,54 @@ class RecorderService : Service() {
     private fun writerCallbacks() = object : ClipWriter.Callbacks {
         override suspend fun onClipFinished(clip: FinishedClip) {
             val id = sessionId ?: return
-            repository.addClip(id, clip.file, clip.stats)
-            clipCount++
+            val vad = clip.vad
+            // VAD nie kasuje niczego: klip poniżej progu ląduje w koszu, skąd da się go
+            // odsłuchać i przywrócić. Silero potrafi wziąć chrapanie za mowę i przegapić
+            // ciche mamrotanie, więc twardy filtr byłby tu nieuczciwy wobec danych.
+            val belowThreshold = vad != null && vad.maxProbability < settings.vadThreshold
+
+            repository.addClip(
+                sessionId = id,
+                file = clip.file,
+                stats = clip.stats,
+                discardReason = if (belowThreshold) ClipRepository.DISCARD_REASON_LOW_VAD else null,
+                vadScore = vad?.maxProbability,
+            )
+            if (belowThreshold) discardedCount++ else clipCount++
+
             diagnostics.log(
                 "clip",
                 "zapisany ${clip.file.name} ${clip.stats.durationMs}ms " +
                     "voiced=${clip.stats.voicedMs}ms peak=${"%.1f".format(clip.stats.peakDb)} " +
-                    "segments=${clip.stats.segments}",
+                    "segments=${clip.stats.segments}" + vadSuffix(vad) +
+                    if (belowThreshold) " -> kosz (poniżej progu VAD)" else "",
             )
-            RecorderStateHolder.update { it.copy(clipCount = clipCount) }
+            RecorderStateHolder.update { it.copy(clipCount = clipCount, discardedCount = discardedCount) }
             notifications.updateRecordingNotification(RecorderStateHolder.state.value)
         }
 
-        override suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats, file: File?) {
+        override suspend fun onClipDiscarded(
+            reason: DiscardReason,
+            stats: ClipStats,
+            file: File?,
+            vad: VadResult?,
+        ) {
             discardedCount++
             val sessionId = sessionId
             if (file != null && sessionId != null) {
-                repository.addClip(sessionId, file, stats, discardReason = reason.name)
+                repository.addClip(
+                    sessionId = sessionId,
+                    file = file,
+                    stats = stats,
+                    discardReason = reason.name,
+                    vadScore = vad?.maxProbability,
+                )
             }
             diagnostics.log(
                 "clip",
                 "odrzucony (${reason.name}) voiced=${stats.voicedMs}ms " +
-                    "peak=${"%.1f".format(stats.peakDb)} ${if (file != null) "zachowany" else "skasowany"}",
+                    "peak=${"%.1f".format(stats.peakDb)}${vadSuffix(vad)} " +
+                    if (file != null) "zachowany" else "skasowany",
             )
             RecorderStateHolder.update { it.copy(discardedCount = discardedCount) }
         }
@@ -338,6 +380,12 @@ class RecorderService : Service() {
             )
             stopSession(ClipRepository.END_REASON_NO_SPACE)
         }
+    }
+
+    private fun vadSuffix(vad: VadResult?): String = if (vad == null) {
+        ""
+    } else {
+        " vad=${"%.2f".format(vad.maxProbability)} mowa=${vad.speechMs}ms"
     }
 
     private fun startMonitors(serviceScope: CoroutineScope) {
@@ -422,7 +470,7 @@ class RecorderService : Service() {
             }
             diagnostics.log(
                 "session",
-                "koniec ($reason) klipy=$clipCount odrzucone=$discardedCount " +
+                "koniec ($reason) klipy=$clipCount odrzucone=$discardedCount vad=$vadActive " +
                     "przerwania=$interruptions zgubione_ramki=${droppedFrames.get()}",
             )
         }

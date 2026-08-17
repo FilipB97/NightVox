@@ -70,6 +70,7 @@ class ClipRepository(
         file: File,
         stats: ClipStats,
         discardReason: String? = null,
+        vadScore: Float? = null,
     ): ClipEntity {
         val entity = ClipEntity(
             id = UUID.randomUUID().toString(),
@@ -80,6 +81,7 @@ class ClipRepository(
             peakDb = stats.peakDb,
             meanDb = stats.meanDb,
             voicedMs = stats.voicedMs,
+            vadScore = vadScore,
             isDiscarded = discardReason != null,
             discardReason = discardReason,
         )
@@ -207,5 +209,8 @@ class ClipRepository(
         const val END_REASON_AUTO_STOP = "auto_stop"
         const val END_REASON_NO_SPACE = "no_space"
         const val END_REASON_ERROR = "error"
+
+        /** Bramka RMS przepuściła, ale VAD nie potwierdził mowy. */
+        const val DISCARD_REASON_LOW_VAD = "LOW_VAD"
     }
 }

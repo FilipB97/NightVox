@@ -13,3 +13,4 @@ build/
 *.hprof
 *.keystore
 !debug.keystore
+.kotlin/
