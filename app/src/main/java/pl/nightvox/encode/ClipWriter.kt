@@ -10,19 +10,16 @@ import kotlinx.coroutines.launch
 import pl.nightvox.audio.ClipStats
 import pl.nightvox.audio.DiscardReason
 import pl.nightvox.audio.GateAction
-import pl.nightvox.audio.vad.VadResult
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 
-/** Gotowy, zamknięty plik klipu razem ze statystykami z bramki i oceną VAD. */
+/** Gotowy, zamknięty plik klipu razem ze statystykami z bramki. */
 data class FinishedClip(
     val file: File,
     val stats: ClipStats,
-    /** `null`, gdy VAD jest wyłączony albo model się nie załadował. */
-    val vad: VadResult? = null,
 )
 
 /**
@@ -43,15 +40,13 @@ class ClipWriter(
      * na nie odpowiedzieć.
      */
     private val keepDiscarded: Boolean = true,
-    /** Drugi stopień detekcji; `null` = tylko bramka RMS. */
-    private val speechDetector: SpeechDetector? = null,
     private val callbacks: Callbacks,
 ) {
     interface Callbacks {
         suspend fun onClipFinished(clip: FinishedClip)
 
         /** [file] jest `null`, gdy zachowywanie odrzuconych jest wyłączone. */
-        suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats, file: File?, vad: VadResult?)
+        suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats, file: File?)
         suspend fun onWriterError(message: String, cause: Throwable?)
 
         /** Za mało miejsca na dysku — sesja powinna się zakończyć (§6.5). */
@@ -88,7 +83,6 @@ class ClipWriter(
         job?.join()
         job = null
         abortOpenEncoder()
-        runCatching { speechDetector?.close() }
         executor.shutdown()
     }
 
@@ -99,22 +93,19 @@ class ClipWriter(
                 if (!skipCurrentClip) {
                     encoder?.write(action.samples)
                     accumulator?.add(action.samples)
-                    speechDetector?.feed(action.samples)
                 }
             }
             is GateAction.CloseClip -> {
                 val file = finalizeFile()
-                val vad = speechDetector?.finish()
                 skipCurrentClip = false
-                if (file != null) callbacks.onClipFinished(FinishedClip(file, action.stats, vad))
+                if (file != null) callbacks.onClipFinished(FinishedClip(file, action.stats))
             }
 
             is GateAction.DiscardClip -> {
                 val wasSkipped = skipCurrentClip
                 val file = if (keepDiscarded) finalizeFile() else { abortOpenEncoder(); null }
-                val vad = speechDetector?.finish()
                 skipCurrentClip = false
-                if (!wasSkipped) callbacks.onClipDiscarded(action.reason, action.stats, file, vad)
+                if (!wasSkipped) callbacks.onClipDiscarded(action.reason, action.stats, file)
             }
         }
     }
@@ -130,7 +121,6 @@ class ClipWriter(
             return
         }
 
-        speechDetector?.start()
         val file = nextClipFile(startedAtMs)
         try {
             encoder = AacEncoder(file, sampleRate, bitRate).apply { start() }

@@ -7,8 +7,8 @@ listę kilku–kilkudziesięciu klipów po kilkanaście sekund zamiast ośmiu go
 Wszystko zostaje lokalnie. Apka **nie ma uprawnienia `INTERNET`** — nagrania fizycznie nie
 mogą opuścić telefonu inaczej niż przez świadome udostępnienie pliku.
 
-Implementacja realizuje [`plan.md`](plan.md). Stan: **fazy 0–2 zrobione**, z fazy 3 gotowy
-jest **Silero VAD**; transkrypcja i Telegram nie są zaczęte — szczegóły niżej.
+Implementacja realizuje [`plan.md`](plan.md). Stan: **fazy 0–2 zrobione**. Faza 3 nie jest
+zaczęta — Silero VAD był zrobiony i został **wycofany**, powód opisany niżej.
 
 ---
 
@@ -31,22 +31,9 @@ własny telefon, nie do dystrybucji.
 Każdy push buduje APK i wystawia go jako artefakt `nightvox-apk` (zakładka **Actions** →
 konkretny przebieg → sekcja *Artifacts*).
 
-Artefakt zawiera jeden plik: `app-release.apk` (~16 MB), zbudowany **wyłącznie dla
-`armeabi-v7a`** — architektury urządzenia docelowego (Galaxy A13 z 32-bitowym Androidem;
-pakiet arm64 się na nim nie instaluje).
-
-ONNX Runtime (Silero VAD) wnosi ok. 12 MB natywnego kodu **na architekturę**, więc pakowanie
-wszystkich czterech dawało 74 MB w wariancie uniwersalnym i 200 MB artefaktu CI. Jeśli
-potrzebujesz innego urządzenia, dopisz jego ABI w `app/build.gradle.kts`:
-
-```kotlin
-release {
-    ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
-}
-```
-
-Uwaga: filtr ABI sprawia, że pakiet deklaruje `native-code` tylko wymienionych architektur,
-a instalator odrzuca go na pozostałych jako „niezgodny z telefonem”.
+Artefakt zawiera jeden plik: `app-release.apk` (~2,7 MB). Instaluje się na dowolnym
+urządzeniu — po wycofaniu ONNX Runtime w aplikacji nie ma już żadnego dużego kodu
+natywnego, więc nie ma też powodu filtrować architektur.
 
 Klucz debugowy jest trzymany w cache Actions, więc kolejne APK z CI instalują się na wierzch
 poprzednich. Nie da się natomiast zainstalować APK z CI na wierzch zbudowanego lokalnie (i
@@ -121,12 +108,7 @@ po cichu. Dzięki temu 45 testów przechodzi na JVM w kilka sekund, bez emulator
 
 Testy instrumentacyjne (`app/src/androidTest`) wymagają urządzenia lub emulatora i
 pokrywają integralność `.m4a` (`MediaExtractor` odczytuje zadeklarowaną długość), Room,
-retencję, cykl życia serwisu oraz Silero VAD na prawdziwym ONNX Runtime.
-
-Ograniczenie testów VAD, o którym trzeba wiedzieć: sygnał jest **syntetyczny** (model
-źródło-filtr), a Silero jest trenowany na prawdziwej mowie. Testy potwierdzają, że wrapper
-jest podpięty poprawnie — zwłaszcza kontekst chunków — ale **nie** mierzą skuteczności VAD
-na mamrotaniu przez sen. To da się ocenić dopiero na nagraniach z kosza „Odrzucone”.
+retencję i cykl życia serwisu.
 
 ---
 
@@ -177,8 +159,6 @@ Bez frameworka DI — `AppContainer` w zupełności wystarcza przy tej liczbie o
 | `mergeGapMs` | 2000 | 0–5000 |
 | `minVoicedMs` | 400 | 100–2000 |
 | `maxClipMs` | 120 s | 30–600 s |
-| `vadEnabled` | **wyłączony** | — |
-| `vadThreshold` | 0.5 | 0.1–0.9 |
 | auto-stop | 09:00 / max 10 h | — |
 | `retentionDays` | 30 | 0 (nigdy) – 365 |
 | `discardedRetentionDays` | 7 | 1–30 |
@@ -190,42 +170,31 @@ Klipy: AAC-LC 32 kbps mono 16 kHz w `filesDir/clips/{yyyy-MM-dd}/{HHmmss}.m4a`, 
 na minutę. Obok każdego pliku leży `.peaks` — obwiednia liczona przy zapisie, żeby
 rysowanie waveformu nie wymagało ponownego dekodowania.
 
-### Silero VAD (faza 3)
+### Silero VAD — zrobiony i wycofany
 
-**Domyślnie wyłączony** — patrz ostrzeżenie na końcu tej sekcji.
+VAD z fazy 3 był w pełni zaimplementowany (ONNX Runtime, model 16 kHz w assetach, wynik jako
+`Clip.vadScore`, klipy poniżej progu do kosza zamiast do kasacji). **Został usunięty**, bo na
+urządzeniu docelowym — Galaxy A13 z 32-bitowym Androidem — ONNX Runtime przewracał proces
+natywnie przy tworzeniu sesji, ok. 2,5 s po starcie nagrywania.
 
-Drugi stopień detekcji: tania bramka RMS wybudza sieć, sieć ocenia, czy to naprawdę mowa.
-Model (`silero_vad_16k.onnx`, 1,26 MB, MIT) leży w `assets` i chodzi lokalnie przez ONNX
-Runtime — apka nadal nie ma uprawnienia `INTERNET`. Analiza kosztuje tylko w trakcie
-nagrywania klipu, bo VAD dostaje ten sam PCM co enkoder, na tym samym wątku.
+Log diagnostyczny pokazywał to jednoznacznie: wpis „ładuję model ONNX”, brak wpisu „model
+gotowy”, a chwilę później wpis `[startup]`, który wykonuje się wyłącznie przy starcie procesu.
+Crash natywny nie przechodzi przez `Thread.setDefaultUncaughtExceptionHandler` ani przez żaden
+`catch` w Kotlinie, więc nie da się go ani złapać, ani obejść od strony aplikacji. Diagnoza
+wymagałaby `adb logcat` i tombstone'a z tego konkretnego urządzenia.
 
-Wynik (`Clip.vadScore`) to **maksimum** prawdopodobieństwa w klipie, nie średnia:
-mamrotanie przez sen to zwykle dwa słowa w kilkusekundowym nagraniu, więc średnia
-rozmyłaby je do zera. Klip poniżej progu trafia do kosza „Odrzucone” — **nigdy nie jest
-kasowany** — skąd da się go odsłuchać i przywrócić. Silero potrafi wziąć chrapanie za mowę
-i przegapić ciche mamrotanie, więc to filtr miękki, nie wyrok.
+Bilans wypadł jednoznacznie: nagrywanie jest funkcją, bez której ta aplikacja nie ma sensu, a
+VAD dodatkiem. Dodatek, który zabija proces i którego nie da się naprawić bez urządzenia, nie
+zarabia na 12 MB kodu natywnego na architekturę. Po usunięciu APK schudło z 74 MB do 2,7 MB i
+przestał być wybredny co do architektury.
 
-**VAD potrafi zabić proces i nie da się tego złapać w Kotlinie.** Na Galaxy A13 (32-bitowy
-ARM) ONNX Runtime przewracał się natywnie przy tworzeniu sesji, ok. 3 s po starcie
-nagrywania. Crash natywny nie przechodzi przez `Thread.setDefaultUncaughtExceptionHandler`,
-więc w logu nie zostawiał żadnego śladu — aplikacja po prostu znikała.
+Co zostało w repo, gotowe do ponownego podpięcia pod inny runtime: `VadChunker` i
+`VadAggregator` wraz z testami. Trzymają dwie rzeczy, które łatwo zrobić źle — układ wejścia
+modelu (kontekst 64 próbki + chunk 512; bez tego Silero zwraca ~0.001 na wszystko, także na
+mowę) oraz to, że wynikiem klipu jest **maksimum**, a nie średnia. Schemat bazy ma nadal
+kolumnę `vadScore`, więc powrót nie wymaga migracji.
 
-Stąd dwie decyzje: VAD jest domyślnie wyłączony (nagrywanie jest funkcją, bez której ta apka
-nie ma sensu, VAD jest dodatkiem), a `VadCrashGuard` zostawia plik-znacznik przed wejściem w
-kod natywny i kasuje go po czystym zakończeniu sesji. Znacznik zastany przy następnym starcie
-oznacza, że poprzednia sesja nie doszła do końca — jeśli zginęła na etapie inicjalizacji, VAD
-wyłącza się sam z komunikatem. To jedyny sposób, żeby wykryć awarię, której żaden `catch` nie
-zobaczy.
-
-**Uwaga dla modyfikujących:** model v5 wymaga wejścia `kontekst (64 próbki) + chunk (512)`
-= 576 próbek, gdzie kontekst to ogon poprzedniego chunka. Karmiony samym chunkiem zwraca
-~0.001 **na wszystko**, łącznie z mową — psuje się bezobjawowo. Dlatego to jest osobna
-czysta klasa `VadChunker` z własnymi testami, a nie kilka linijek w wrapperze ONNX.
-
-ONNX Runtime wnosi ok. 12 MB natywnego kodu na architekturę — patrz „Gotowy APK z CI"
-w sprawie doboru ABI.
-
-### Kosz „Odrzucone”
+### Kosz „Odrzucone”### Kosz „Odrzucone”
 
 Zdarzenia, które nie przeszły przez `minVoicedMs`, domyślnie **nie znikają** — lądują w
 zakładce „Odrzucone” razem z powodem odrzucenia i dają się odsłuchać oraz przywrócić na
@@ -236,8 +205,9 @@ wyłączyć w Ustawieniach.
 
 ---
 
-## Czego tu nie ma (reszta fazy 3)
+## Czego tu nie ma (faza 3)
 
+- **Silero VAD** — patrz wyżej: zrobiony, wycofany po natywnym crashu na urządzeniu docelowym.
 - **Transkrypcja (whisper.cpp)** — pole `Clip.transcript` czeka; ekran klipu ma sekcję
   „Transkrypcja” z jawną informacją, że to faza 3.
 - **Telegram** — wymaga uprawnienia `INTERNET`, które jest w manifeście **zakomentowane**.

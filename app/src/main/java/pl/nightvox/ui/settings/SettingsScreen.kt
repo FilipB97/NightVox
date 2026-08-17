@@ -153,33 +153,6 @@ fun SettingsScreen(
                 description = "Ochrona przed wentylatorem albo deszczem za oknem, który trzyma bramkę otwartą godzinami.",
             )
 
-            // --- VAD ---
-            SectionHeader("Detekcja mowy (VAD)")
-            SwitchRow(
-                label = "Silero VAD (eksperymentalne)",
-                description = "Drugi stopień detekcji: bramka RMS wybudza sieć, sieć ocenia, czy to mowa. " +
-                    "Model działa lokalnie, nic nie jest pobierane. Domyślnie wyłączone, bo na części " +
-                    "urządzeń biblioteka natywna przewraca całą aplikację przy starcie nagrywania. " +
-                    "Jeśli tak się stanie, NightVox wyłączy VAD sam i będzie nagrywał dalej samą bramką.",
-                checked = settings.vadEnabled,
-                onCheckedChange = { v -> viewModel.update { it.copy(vadEnabled = v) } },
-            )
-            if (settings.vadEnabled) {
-                ParameterSlider(
-                    label = "Próg VAD",
-                    valueText = String.format(java.util.Locale.US, "%.2f", settings.vadThreshold),
-                    value = settings.vadThreshold,
-                    range = NightVoxSettings.VAD_THRESHOLD_RANGE,
-                    steps = 15,
-                    onValueChange = { v ->
-                        viewModel.update { it.copy(vadThreshold = (Math.round(v * 20f) / 20f)) }
-                    },
-                    description = "Klipy poniżej progu trafiają do „Odrzucone”, skąd da się je odsłuchać " +
-                        "i przywrócić — nigdy nie są kasowane. Silero potrafi wziąć chrapanie za mowę i " +
-                        "przegapić ciche mamrotanie, więc to filtr miękki, nie wyrok.",
-                )
-            }
-
             // --- sesja ---
             SectionHeader("Sesja")
             SwitchRow(

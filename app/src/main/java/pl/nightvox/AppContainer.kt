@@ -3,7 +3,6 @@ package pl.nightvox
 import android.content.Context
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import pl.nightvox.audio.vad.VadCrashGuard
 import pl.nightvox.data.ClipRepository
 import pl.nightvox.data.SettingsStore
 import pl.nightvox.data.db.NightVoxDatabase
@@ -32,10 +31,6 @@ class AppContainer(context: Context) {
     val settingsStore: SettingsStore by lazy { SettingsStore(appContext) }
 
     val diagnostics: DiagnosticsLog by lazy { DiagnosticsLog(appContext) }
-
-    val vadCrashGuard: VadCrashGuard by lazy {
-        VadCrashGuard(File(appContext.filesDir, VadCrashGuard.FILE_NAME))
-    }
 
     val clipRepository: ClipRepository by lazy {
         ClipRepository(database.clipDao(), database.sessionDao(), clipsDir)

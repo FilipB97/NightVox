@@ -19,7 +19,6 @@ import org.junit.runner.RunWith
 import pl.nightvox.audio.ClipStats
 import pl.nightvox.audio.DiscardReason
 import pl.nightvox.audio.GateAction
-import pl.nightvox.audio.vad.VadResult
 import java.io.File
 import kotlin.math.PI
 import kotlin.math.abs
@@ -45,12 +44,7 @@ class ClipWriterInstrumentedTest {
 
     private val callbacks = object : ClipWriter.Callbacks {
         override suspend fun onClipFinished(clip: FinishedClip) { finished += clip }
-        override suspend fun onClipDiscarded(
-            reason: DiscardReason,
-            stats: ClipStats,
-            file: File?,
-            vad: VadResult?,
-        ) {
+        override suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats, file: File?) {
             discarded += reason
             discardedFiles += file
         }

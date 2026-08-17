@@ -14,8 +14,8 @@ android {
         applicationId = "pl.nightvox"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.2"
+        versionCode = 4
+        versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -24,9 +24,6 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
-            // armeabi-v7a to architektura urządzenia docelowego, x86_64 jest potrzebne,
-            // żeby testy instrumentacyjne działały na emulatorze CI.
-            ndk { abiFilters += listOf("armeabi-v7a", "x86_64") }
         }
         release {
             // Sideload / personal build: signed with the debug key so `assembleRelease`
@@ -35,14 +32,6 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
-            /*
-             * Tylko armeabi-v7a — to jedyna architektura, na której ta apka jest używana
-             * (Galaxy A13 z 32-bitowym Androidem; APK arm64 się na nim nie instaluje).
-             * ONNX Runtime wnosi ok. 12 MB na architekturę, więc pakowanie pozostałych
-             * trzech oznaczało 74 MB w wariancie uniwersalnym i 200 MB artefaktu CI.
-             * Inne urządzenie = dopisz tu jego ABI (np. "arm64-v8a").
-             */
-            ndk { abiFilters += listOf("armeabi-v7a") }
         }
     }
 
@@ -62,11 +51,6 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-        // Model musi trafić do APK bez kompresji — inaczej ONNX Runtime nie zmapuje go
-        // z assetów i trzeba by go najpierw kopiować na dysk.
-        androidResources {
-            noCompress += "onnx"
         }
     }
 
@@ -108,9 +92,6 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
-
-    // Silero VAD (faza 3). Model .onnx leży w assets — nic nie jest pobierane w runtime.
-    implementation(libs.onnxruntime.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
