@@ -210,15 +210,7 @@ class RecorderService : Service() {
         )
         gate = newGate
 
-        val detector = if (settings.vadEnabled) {
-            SileroVad.create(this, config.sampleRate)?.let { vad ->
-                SileroSpeechDetector(vad, config.sampleRate, settings.vadThreshold)
-            }.also {
-                if (it == null) diagnostics.log("vad", "model niedostępny — zostaje sama bramka RMS")
-            }
-        } else {
-            null
-        }
+        val detector = createSpeechDetector(config, serviceScope)
         vadActive = detector != null
 
         val writer = ClipWriter(
@@ -248,6 +240,50 @@ class RecorderService : Service() {
         )
         capture = audioCapture
         audioCapture.start()
+    }
+
+    /**
+     * Tworzy detektor mowy, o ile VAD jest włączony i poprzednia próba nie zabiła procesu.
+     *
+     * Wokół inicjalizacji ONNX zostawiamy znacznik: crash natywny nie przechodzi przez
+     * żaden `catch`, więc jedynym sposobem, żeby się o nim dowiedzieć, jest zastanie
+     * znacznika przy następnym starcie.
+     */
+    private fun createSpeechDetector(config: GateConfig, serviceScope: CoroutineScope): SileroSpeechDetector? {
+        val guard = container.vadCrashGuard
+
+        if (guard.previousFailureBlamesVad()) {
+            guard.endCleanly()
+            diagnostics.log(
+                "vad",
+                "poprzednia sesja zginęła podczas inicjalizacji VAD — wyłączam go i nagrywam samą bramką RMS",
+            )
+            serviceScope.launch { container.settingsStore.update { it.copy(vadEnabled = false) } }
+            RecorderStateHolder.update {
+                it.copy(
+                    lastError = "Wykrywanie mowy (VAD) zostało wyłączone: poprzednim razem " +
+                        "przewróciło aplikację przy starcie. Nagrywanie działa dalej bez niego.",
+                )
+            }
+            notifications.postAlert(
+                "VAD wyłączony automatycznie",
+                "Poprzednia sesja zginęła podczas ładowania modelu. Nagrywanie działa bez VAD.",
+            )
+            return null
+        }
+        if (!settings.vadEnabled) return null
+
+        guard.beginInit()
+        diagnostics.log("vad", "ładuję model ONNX (${SileroVad.ASSET_NAME})")
+        val vad = SileroVad.create(this, config.sampleRate)
+        if (vad == null) {
+            guard.endCleanly()
+            diagnostics.log("vad", "model niedostępny — zostaje sama bramka RMS")
+            return null
+        }
+        guard.initSucceeded()
+        diagnostics.log("vad", "model gotowy")
+        return SileroSpeechDetector(vad, config.sampleRate, settings.vadThreshold)
     }
 
     private suspend fun runPipeline(
@@ -501,6 +537,7 @@ class RecorderService : Service() {
                 repository.updateSessionStats(id, lastFloorDb(), interruptions)
                 repository.endSession(id, reason)
             }
+            container.vadCrashGuard.endCleanly()
             diagnostics.log(
                 "session",
                 "koniec ($reason) klipy=$clipCount odrzucone=$discardedCount vad=$vadActive " +

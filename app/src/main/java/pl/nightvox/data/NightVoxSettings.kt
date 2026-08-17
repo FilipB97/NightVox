@@ -33,8 +33,13 @@ data class NightVoxSettings(
      * Silero VAD jako drugi stopień detekcji. Klipy poniżej progu trafiają do „Odrzucone”,
      * nigdy nie są kasowane — Silero potrafi wziąć chrapanie za mowę i odwrotnie, więc to
      * jest filtr miękki, nie wyrok.
+     *
+     * Domyślnie **wyłączony**: ONNX Runtime potrafi przewrócić się natywnie (SIGSEGV) na
+     * niektórych urządzeniach, a wtedy ginie cały proces razem z nagrywaniem. Nagrywanie
+     * jest funkcją, bez której ta apka nie ma sensu; VAD jest dodatkiem, więc to on czeka
+     * na świadome włączenie, a nie odwrotnie.
      */
-    val vadEnabled: Boolean = true,
+    val vadEnabled: Boolean = false,
     val vadThreshold: Float = 0.5f,
     val keepScreenOn: Boolean = false,
     /** Dump całej sesji do WAV — do debugowania progów, zjada ok. 115 MB/h. */

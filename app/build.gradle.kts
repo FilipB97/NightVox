@@ -14,33 +14,19 @@ android {
         applicationId = "pl.nightvox"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.3.1"
+        versionCode = 3
+        versionName = "0.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    /*
-     * ONNX Runtime wnosi ok. 70 MB natywnych bibliotek na cztery architektury.
-     * Filtrowanie ABI do samego arm64 zmniejszało APK, ale sprawiało, że pakiet deklarował
-     * `native-code: arm64-v8a` i instalator odrzucał go na każdym innym urządzeniu jako
-     * „niezgodny z telefonem”. Rozmiar nie jest wart utraty możliwości instalacji, więc
-     * zamiast filtra są splity: małe APK per architektura plus jedno uniwersalne, które
-     * zainstaluje się wszędzie.
-     */
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = true
-        }
     }
 
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
+            // armeabi-v7a to architektura urządzenia docelowego, x86_64 jest potrzebne,
+            // żeby testy instrumentacyjne działały na emulatorze CI.
+            ndk { abiFilters += listOf("armeabi-v7a", "x86_64") }
         }
         release {
             // Sideload / personal build: signed with the debug key so `assembleRelease`
@@ -49,6 +35,14 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
+            /*
+             * Tylko armeabi-v7a — to jedyna architektura, na której ta apka jest używana
+             * (Galaxy A13 z 32-bitowym Androidem; APK arm64 się na nim nie instaluje).
+             * ONNX Runtime wnosi ok. 12 MB na architekturę, więc pakowanie pozostałych
+             * trzech oznaczało 74 MB w wariancie uniwersalnym i 200 MB artefaktu CI.
+             * Inne urządzenie = dopisz tu jego ABI (np. "arm64-v8a").
+             */
+            ndk { abiFilters += listOf("armeabi-v7a") }
         }
     }
 

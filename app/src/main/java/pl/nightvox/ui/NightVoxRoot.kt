@@ -1,5 +1,14 @@
 package pl.nightvox.ui
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
@@ -49,6 +58,32 @@ object Routes {
     fun clipDetail(id: String) = "clip/$id"
 }
 
+/*
+ * Przejścia między ekranami.
+ *
+ * Zakładki z dolnego paska są równorzędne — nie ma między nimi „w przód” ani „wstecz”, więc
+ * domyślne wsuwanie całego ekranu z boku czyta się jak nawigacja w głąb i wygląda źle przy
+ * nieruchomym pasku. Zakładki dostają samo przenikanie, a wejście w szczegóły (sesja, klip,
+ * kalibracja) delikatny ruch poziomy, który niesie kierunek.
+ *
+ * Czasy są krótkie: to aplikacja włączana po ciemku tuż przed snem, animacje mają nie
+ * przeszkadzać.
+ */
+private const val FADE_IN_MS = 160
+private const val FADE_OUT_MS = 110
+private const val SLIDE_MS = 240
+
+private val tabEnter: EnterTransition = fadeIn(tween(FADE_IN_MS, easing = FastOutSlowInEasing))
+private val tabExit: ExitTransition = fadeOut(tween(FADE_OUT_MS, easing = FastOutSlowInEasing))
+
+private fun AnimatedContentTransitionScope<*>.detailEnter(): EnterTransition =
+    slideInHorizontally(tween(SLIDE_MS, easing = FastOutSlowInEasing)) { width -> width / 5 } +
+        fadeIn(tween(FADE_IN_MS))
+
+private fun AnimatedContentTransitionScope<*>.detailPopExit(): ExitTransition =
+    slideOutHorizontally(tween(SLIDE_MS, easing = FastOutSlowInEasing)) { width -> width / 5 } +
+        fadeOut(tween(FADE_OUT_MS))
+
 private data class TabItem(val route: String, val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
@@ -86,6 +121,10 @@ fun NightVoxRoot() {
             navController = navController,
             startDestination = Routes.HOME,
             modifier = Modifier.padding(padding),
+            enterTransition = { tabEnter },
+            exitTransition = { tabExit },
+            popEnterTransition = { tabEnter },
+            popExitTransition = { tabExit },
         ) {
             composable(Routes.HOME) {
                 val vm: HomeViewModel = viewModel(factory = NightVoxViewModelFactory)
@@ -116,11 +155,23 @@ fun NightVoxRoot() {
                     onOpenCalibration = { navController.navigate(Routes.CALIBRATION) },
                 )
             }
-            composable(Routes.CALIBRATION) {
+            composable(
+                Routes.CALIBRATION,
+                enterTransition = { detailEnter() },
+                exitTransition = { tabExit },
+                popEnterTransition = { tabEnter },
+                popExitTransition = { detailPopExit() },
+            ) {
                 val vm: CalibrationViewModel = viewModel(factory = NightVoxViewModelFactory)
                 CalibrationScreen(viewModel = vm, onBack = { navController.popBackStack() })
             }
-            composable(Routes.SESSION_DETAIL) { entry ->
+            composable(
+                Routes.SESSION_DETAIL,
+                enterTransition = { detailEnter() },
+                exitTransition = { tabExit },
+                popEnterTransition = { tabEnter },
+                popExitTransition = { detailPopExit() },
+            ) { entry ->
                 val sessionId = entry.arguments?.getString("sessionId").orEmpty()
                 val vm: SessionsViewModel = viewModel(factory = NightVoxViewModelFactory)
                 SessionDetailScreen(
@@ -130,7 +181,13 @@ fun NightVoxRoot() {
                     onOpenClip = { navController.navigate(Routes.clipDetail(it)) },
                 )
             }
-            composable(Routes.CLIP_DETAIL) { entry ->
+            composable(
+                Routes.CLIP_DETAIL,
+                enterTransition = { detailEnter() },
+                exitTransition = { tabExit },
+                popEnterTransition = { tabEnter },
+                popExitTransition = { detailPopExit() },
+            ) { entry ->
                 val clipId = entry.arguments?.getString("clipId").orEmpty()
                 val vm: ClipsViewModel = viewModel(factory = NightVoxViewModelFactory)
                 ClipDetailScreen(

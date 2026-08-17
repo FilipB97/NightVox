@@ -71,7 +71,6 @@ jobs:
       - name: Lista zbudowanych APK
         run: |
           echo "### Zbudowane APK" >> $GITHUB_STEP_SUMMARY
-          echo "Nie wiesz, jaką masz architekturę? Weź **app-universal-release.apk**." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Plik | Rozmiar |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
@@ -83,9 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nightvox-apk
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
 

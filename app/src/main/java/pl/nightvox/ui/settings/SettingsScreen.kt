@@ -156,9 +156,11 @@ fun SettingsScreen(
             // --- VAD ---
             SectionHeader("Detekcja mowy (VAD)")
             SwitchRow(
-                label = "Silero VAD",
+                label = "Silero VAD (eksperymentalne)",
                 description = "Drugi stopień detekcji: bramka RMS wybudza sieć, sieć ocenia, czy to mowa. " +
-                    "Model działa lokalnie, nic nie jest pobierane.",
+                    "Model działa lokalnie, nic nie jest pobierane. Domyślnie wyłączone, bo na części " +
+                    "urządzeń biblioteka natywna przewraca całą aplikację przy starcie nagrywania. " +
+                    "Jeśli tak się stanie, NightVox wyłączy VAD sam i będzie nagrywał dalej samą bramką.",
                 checked = settings.vadEnabled,
                 onCheckedChange = { v -> viewModel.update { it.copy(vadEnabled = v) } },
             )

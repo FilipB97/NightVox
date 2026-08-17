@@ -31,21 +31,22 @@ własny telefon, nie do dystrybucji.
 Każdy push buduje APK i wystawia go jako artefakt `nightvox-apk` (zakładka **Actions** →
 konkretny przebieg → sekcja *Artifacts*).
 
-**Jeśli nie wiesz, jaką architekturę ma twój telefon — zainstaluj `app-universal-release.apk`.**
-Zainstaluje się na każdym urządzeniu, kosztem rozmiaru (~74 MB). Pozostałe pliki to warianty
-per architektura, znacznie mniejsze, ale zainstalują się **tylko** na pasującym urządzeniu:
+Artefakt zawiera jeden plik: `app-release.apk` (~16 MB), zbudowany **wyłącznie dla
+`armeabi-v7a`** — architektury urządzenia docelowego (Galaxy A13 z 32-bitowym Androidem;
+pakiet arm64 się na nim nie instaluje).
 
-| Plik | Rozmiar | Dla kogo |
-|---|---|---|
-| `app-universal-release.apk` | ~74 MB | działa wszędzie — bierz ten, gdy nie masz pewności |
-| `app-arm64-v8a-release.apk` | ~22 MB | zdecydowana większość telefonów z ostatnich lat |
-| `app-armeabi-v7a-release.apk` | ~16 MB | starsze/budżetowe 32-bitowe ARM |
-| `app-x86_64-release.apk` | ~24 MB | emulatory, ChromeOS, tablety x86 |
+ONNX Runtime (Silero VAD) wnosi ok. 12 MB natywnego kodu **na architekturę**, więc pakowanie
+wszystkich czterech dawało 74 MB w wariancie uniwersalnym i 200 MB artefaktu CI. Jeśli
+potrzebujesz innego urządzenia, dopisz jego ABI w `app/build.gradle.kts`:
 
-Podział bierze się stąd, że ONNX Runtime (Silero VAD) wnosi ok. 70 MB natywnych bibliotek na
-cztery architektury. Wcześniejsza próba zaoszczędzenia miejsca przez ograniczenie builda do
-`arm64-v8a` skończyła się komunikatem „aplikacja niezgodna z telefonem" na wszystkim, co nie
-było arm64 — dlatego teraz są splity plus wariant uniwersalny, a nie filtr.
+```kotlin
+release {
+    ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
+}
+```
+
+Uwaga: filtr ABI sprawia, że pakiet deklaruje `native-code` tylko wymienionych architektur,
+a instalator odrzuca go na pozostałych jako „niezgodny z telefonem”.
 
 Klucz debugowy jest trzymany w cache Actions, więc kolejne APK z CI instalują się na wierzch
 poprzednich. Nie da się natomiast zainstalować APK z CI na wierzch zbudowanego lokalnie (i
@@ -176,7 +177,7 @@ Bez frameworka DI — `AppContainer` w zupełności wystarcza przy tej liczbie o
 | `mergeGapMs` | 2000 | 0–5000 |
 | `minVoicedMs` | 400 | 100–2000 |
 | `maxClipMs` | 120 s | 30–600 s |
-| `vadEnabled` | włączony | — |
+| `vadEnabled` | **wyłączony** | — |
 | `vadThreshold` | 0.5 | 0.1–0.9 |
 | auto-stop | 09:00 / max 10 h | — |
 | `retentionDays` | 30 | 0 (nigdy) – 365 |
@@ -191,6 +192,8 @@ rysowanie waveformu nie wymagało ponownego dekodowania.
 
 ### Silero VAD (faza 3)
 
+**Domyślnie wyłączony** — patrz ostrzeżenie na końcu tej sekcji.
+
 Drugi stopień detekcji: tania bramka RMS wybudza sieć, sieć ocenia, czy to naprawdę mowa.
 Model (`silero_vad_16k.onnx`, 1,26 MB, MIT) leży w `assets` i chodzi lokalnie przez ONNX
 Runtime — apka nadal nie ma uprawnienia `INTERNET`. Analiza kosztuje tylko w trakcie
@@ -202,15 +205,25 @@ rozmyłaby je do zera. Klip poniżej progu trafia do kosza „Odrzucone” — *
 kasowany** — skąd da się go odsłuchać i przywrócić. Silero potrafi wziąć chrapanie za mowę
 i przegapić ciche mamrotanie, więc to filtr miękki, nie wyrok.
 
+**VAD potrafi zabić proces i nie da się tego złapać w Kotlinie.** Na Galaxy A13 (32-bitowy
+ARM) ONNX Runtime przewracał się natywnie przy tworzeniu sesji, ok. 3 s po starcie
+nagrywania. Crash natywny nie przechodzi przez `Thread.setDefaultUncaughtExceptionHandler`,
+więc w logu nie zostawiał żadnego śladu — aplikacja po prostu znikała.
+
+Stąd dwie decyzje: VAD jest domyślnie wyłączony (nagrywanie jest funkcją, bez której ta apka
+nie ma sensu, VAD jest dodatkiem), a `VadCrashGuard` zostawia plik-znacznik przed wejściem w
+kod natywny i kasuje go po czystym zakończeniu sesji. Znacznik zastany przy następnym starcie
+oznacza, że poprzednia sesja nie doszła do końca — jeśli zginęła na etapie inicjalizacji, VAD
+wyłącza się sam z komunikatem. To jedyny sposób, żeby wykryć awarię, której żaden `catch` nie
+zobaczy.
+
 **Uwaga dla modyfikujących:** model v5 wymaga wejścia `kontekst (64 próbki) + chunk (512)`
 = 576 próbek, gdzie kontekst to ogon poprzedniego chunka. Karmiony samym chunkiem zwraca
 ~0.001 **na wszystko**, łącznie z mową — psuje się bezobjawowo. Dlatego to jest osobna
 czysta klasa `VadChunker` z własnymi testami, a nie kilka linijek w wrapperze ONNX.
 
-ONNX Runtime wnosi ok. 70 MB natywnych bibliotek na cztery architektury. Build produkuje
-splity per architektura (~16–24 MB) plus wariant uniwersalny (~74 MB) — patrz „Gotowy APK
-z CI". Filtrowanie ABI byłoby mniejsze, ale sprawia, że pakiet deklaruje `native-code`
-jednej architektury i instalator odrzuca go wszędzie indziej jako „niezgodny z telefonem".
+ONNX Runtime wnosi ok. 12 MB natywnego kodu na architekturę — patrz „Gotowy APK z CI"
+w sprawie doboru ABI.
 
 ### Kosz „Odrzucone”
 
