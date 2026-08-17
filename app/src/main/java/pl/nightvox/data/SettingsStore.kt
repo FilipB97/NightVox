@@ -44,6 +44,8 @@ class SettingsStore(private val context: Context) {
             prefs[Keys.AUTO_STOP_MINUTE] = updated.autoStopMinute
             prefs[Keys.MAX_SESSION_HOURS] = updated.maxSessionHours
             prefs[Keys.RETENTION_DAYS] = updated.retentionDays
+            prefs[Keys.KEEP_DISCARDED] = updated.keepDiscardedClips
+            prefs[Keys.DISCARDED_RETENTION_DAYS] = updated.discardedRetentionDays
             prefs[Keys.KEEP_SCREEN_ON] = updated.keepScreenOn
             prefs[Keys.DEBUG_WAV_DUMP] = updated.debugWavDump
             prefs[Keys.DIAGNOSTICS] = updated.diagnosticsEnabled
@@ -69,6 +71,8 @@ class SettingsStore(private val context: Context) {
             autoStopMinute = this[Keys.AUTO_STOP_MINUTE] ?: d.autoStopMinute,
             maxSessionHours = this[Keys.MAX_SESSION_HOURS] ?: d.maxSessionHours,
             retentionDays = this[Keys.RETENTION_DAYS] ?: d.retentionDays,
+            keepDiscardedClips = this[Keys.KEEP_DISCARDED] ?: d.keepDiscardedClips,
+            discardedRetentionDays = this[Keys.DISCARDED_RETENTION_DAYS] ?: d.discardedRetentionDays,
             keepScreenOn = this[Keys.KEEP_SCREEN_ON] ?: d.keepScreenOn,
             debugWavDump = this[Keys.DEBUG_WAV_DUMP] ?: d.debugWavDump,
             diagnosticsEnabled = this[Keys.DIAGNOSTICS] ?: d.diagnosticsEnabled,
@@ -88,6 +92,8 @@ class SettingsStore(private val context: Context) {
         val AUTO_STOP_MINUTE = intPreferencesKey("auto_stop_minute")
         val MAX_SESSION_HOURS = intPreferencesKey("max_session_hours")
         val RETENTION_DAYS = intPreferencesKey("retention_days")
+        val KEEP_DISCARDED = booleanPreferencesKey("keep_discarded_clips")
+        val DISCARDED_RETENTION_DAYS = intPreferencesKey("discarded_retention_days")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val DEBUG_WAV_DUMP = booleanPreferencesKey("debug_wav_dump")
         val DIAGNOSTICS = booleanPreferencesKey("diagnostics_enabled")

@@ -39,11 +39,15 @@ class ClipWriterInstrumentedTest {
 
     private val finished = mutableListOf<FinishedClip>()
     private val discarded = mutableListOf<DiscardReason>()
+    private val discardedFiles = mutableListOf<File?>()
     private val errors = mutableListOf<String>()
 
     private val callbacks = object : ClipWriter.Callbacks {
         override suspend fun onClipFinished(clip: FinishedClip) { finished += clip }
-        override suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats) { discarded += reason }
+        override suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats, file: File?) {
+            discarded += reason
+            discardedFiles += file
+        }
         override suspend fun onWriterError(message: String, cause: Throwable?) { errors += message }
         override suspend fun onOutOfSpace(freeBytes: Long) { errors += "brak miejsca" }
     }
@@ -111,25 +115,50 @@ class ClipWriterInstrumentedTest {
     }
 
     @Test
-    fun odrzucony_klip_nie_zostawia_plikow() = runBlocking {
-        val writer = ClipWriter(clipsDir, sampleRate, callbacks = callbacks)
+    fun odrzucony_klip_nie_zostawia_plikow_gdy_kosz_wylaczony() = runBlocking {
+        val writer = ClipWriter(clipsDir, sampleRate, keepDiscarded = false, callbacks = callbacks)
         writer.start(scope)
-
-        val startedAt = System.currentTimeMillis()
-        writer.submit(GateAction.OpenClip(startedAt))
-        feedTone(writer, 300)
-        writer.submit(
-            GateAction.DiscardClip(
-                DiscardReason.TOO_SHORT,
-                ClipStats(startedAt, 300, 60, -20f, -30f, 1),
-            ),
-        )
-        writer.close()
+        discardOneClip(writer)
 
         assertEquals(listOf(DiscardReason.TOO_SHORT), discarded)
+        assertEquals(listOf<File?>(null), discardedFiles)
         assertEquals(0, finished.size)
         val leftovers = clipsDir.walkTopDown().filter { it.isFile }.toList()
         assertTrue("Po odrzuceniu zostały pliki: $leftovers", leftovers.isEmpty())
+    }
+
+    /**
+     * Kosz „Odrzucone”: plik musi zostać i musi dać się odtworzyć. Odrzucony klip bez
+     * odtwarzalnego audio nie odpowiada na pytanie „czy filtr wyciął mowę”, czyli nie ma
+     * po co istnieć.
+     */
+    @Test
+    fun odrzucony_klip_zostaje_odtwarzalny_gdy_kosz_wlaczony() = runBlocking {
+        val writer = ClipWriter(clipsDir, sampleRate, keepDiscarded = true, callbacks = callbacks)
+        writer.start(scope)
+        discardOneClip(writer)
+
+        assertEquals(listOf(DiscardReason.TOO_SHORT), discarded)
+        assertEquals(0, finished.size)
+
+        val file = discardedFiles.single()
+        assertNotNull("Odrzucony klip nie zachował pliku", file)
+        assertTrue("Plik odrzuconego klipu jest pusty", file!!.length() > 0)
+        assertNotNull("Odrzucony klip nie jest odtwarzalny", declaredDurationUs(file))
+        assertNotNull("Odrzucony klip nie ma obwiedni", Waveform.read(file))
+    }
+
+    private suspend fun discardOneClip(writer: ClipWriter) {
+        val startedAt = System.currentTimeMillis()
+        writer.submit(GateAction.OpenClip(startedAt))
+        feedTone(writer, 600)
+        writer.submit(
+            GateAction.DiscardClip(
+                DiscardReason.TOO_SHORT,
+                ClipStats(startedAt, 600, 60, -20f, -30f, 1),
+            ),
+        )
+        writer.close()
     }
 
     @Test

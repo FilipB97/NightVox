@@ -29,7 +29,10 @@ data class SessionEntity(
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index(value = ["sessionId", "startedAt"])],
+    indices = [
+        Index(value = ["sessionId", "startedAt"]),
+        Index(value = ["isDiscarded", "startedAt"]),
+    ],
 )
 data class ClipEntity(
     @PrimaryKey val id: String,
@@ -45,6 +48,13 @@ data class ClipEntity(
     /** Faza 3 — whisper.cpp. */
     val transcript: String? = null,
     val isFavorite: Boolean = false,
+    /**
+     * Klip odrzucony przez bramkę. Nie kasujemy go od razu — dopóki progi nie są dostrojone,
+     * najważniejsze pytanie brzmi „czy filtr nie wyrzuca mowy”, a bez nagrania nie da się
+     * na nie odpowiedzieć.
+     */
+    val isDiscarded: Boolean = false,
+    val discardReason: String? = null,
 )
 
 /** Sesja z policzonymi klipami — dla listy nocy, żeby nie robić N+1 zapytań. */

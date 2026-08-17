@@ -78,6 +78,13 @@ class Gate(
     val releaseThresholdDb: Float get() = triggerThresholdDb - config.releaseHysteresisDb
     val isWarmingUp: Boolean get() = state == GateState.WARMUP
 
+    /**
+     * Ile jeszcze warm-upu zostało, liczone w **przetworzonych ramkach**, a nie w czasie od
+     * startu sesji. Mikrofon otwiera się z opóźnieniem i potrafi paść w trakcie — odliczanie
+     * po zegarku pokazywałoby wtedy zero, mimo że tło wciąż nie jest zmierzone.
+     */
+    val warmupRemainingMs: Long get() = floorTracker.warmupRemaining * config.frameMs
+
     // --- stan bieżącego klipu ---
     private var clipStartedAtMs = 0L
     private var clipSamples = 0L

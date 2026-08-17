@@ -78,7 +78,7 @@ i sama się nie wyciszyła.
 ### Cała logika decyzyjna jest czystym Kotlinem
 
 `Gate`, `RingBuffer`, `NoiseFloorTracker`, `LevelMeter`, `GateConfig` nie mają żadnej
-zależności od Androida. Dzięki temu 29 testów przechodzi na JVM w kilka sekund, bez
+zależności od Androida. Dzięki temu 30 testów przechodzi na JVM w kilka sekund, bez
 emulatora — łącznie z kryteriami akceptacji fazy 1 z planu:
 
 | Test | Co sprawdza |
@@ -91,6 +91,7 @@ emulatora — łącznie z kryteriami akceptacji fazy 1 z planu:
 | `krotki trzask jest odrzucany przez minVoicedMs` | 100 ms trzasku → `DiscardClip(TOO_SHORT)` |
 | `ciagly halas jest ciety na maxClipMs` | 45 s ciągłego dźwięku → kilka klipów, żaden dłuższy niż limit |
 | `tlo nie rosnie podczas dlugiej wypowiedzi` | 30 s mówienia → tło stoi |
+| `odliczanie warm-upu idzie za ramkami a nie zegarem` | warm-up liczony przetworzonymi ramkami, nie czasem od startu |
 
 Testy instrumentacyjne (`app/src/androidTest`) wymagają urządzenia lub emulatora i
 pokrywają integralność `.m4a` (`MediaExtractor` odczytuje zadeklarowaną długość), Room,
@@ -147,6 +148,7 @@ Bez frameworka DI — `AppContainer` w zupełności wystarcza przy tej liczbie o
 | `maxClipMs` | 120 s | 30–600 s |
 | auto-stop | 09:00 / max 10 h | — |
 | `retentionDays` | 30 | 0 (nigdy) – 365 |
+| `discardedRetentionDays` | 7 | 1–30 |
 
 Migawka parametrów trafia do `Session.settingsSnapshot`, więc po tygodniu wiadomo, przy
 jakich progach powstała każda noc. Ulubione klipy nie są kasowane przez retencję nigdy.
@@ -154,6 +156,15 @@ jakich progach powstała każda noc. Ulubione klipy nie są kasowane przez reten
 Klipy: AAC-LC 32 kbps mono 16 kHz w `filesDir/clips/{yyyy-MM-dd}/{HHmmss}.m4a`, ok. 240 kB
 na minutę. Obok każdego pliku leży `.peaks` — obwiednia liczona przy zapisie, żeby
 rysowanie waveformu nie wymagało ponownego dekodowania.
+
+### Kosz „Odrzucone”
+
+Zdarzenia, które nie przeszły przez `minVoicedMs`, domyślnie **nie znikają** — lądują w
+zakładce „Odrzucone” razem z powodem odrzucenia i dają się odsłuchać oraz przywrócić na
+zwykłą listę. Dopóki progi nie są dostrojone, najważniejsze pytanie brzmi „czy filtr nie
+wycina mowy”, a bez nagrania nie da się na nie odpowiedzieć. Kosz ma własną, krótszą
+retencję (domyślnie 7 dni), bo służy do strojenia, a nie do archiwizacji; da się go też
+wyłączyć w Ustawieniach.
 
 ---
 

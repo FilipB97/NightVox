@@ -30,7 +30,7 @@ interface SessionDao {
                COUNT(c.id) AS clipCount,
                COALESCE(SUM(c.voicedMs), 0) AS totalVoicedMs,
                COALESCE(SUM(c.durationMs), 0) AS totalDurationMs
-        FROM sessions s LEFT JOIN clips c ON c.sessionId = s.id
+        FROM sessions s LEFT JOIN clips c ON c.sessionId = s.id AND c.isDiscarded = 0
         GROUP BY s.id
         ORDER BY s.startedAt DESC
         """,
@@ -41,7 +41,10 @@ interface SessionDao {
     @Query("SELECT * FROM sessions WHERE endedAt IS NULL")
     suspend fun orphaned(): List<SessionEntity>
 
-    @Query("UPDATE sessions SET clipCount = (SELECT COUNT(*) FROM clips WHERE sessionId = :id) WHERE id = :id")
+    @Query(
+        "UPDATE sessions SET clipCount = " +
+            "(SELECT COUNT(*) FROM clips WHERE sessionId = :id AND isDiscarded = 0) WHERE id = :id",
+    )
     suspend fun refreshClipCount(id: String)
 
     @Query("UPDATE sessions SET endedAt = :endedAt, endReason = :reason WHERE id = :id")

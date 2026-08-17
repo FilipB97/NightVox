@@ -196,6 +196,25 @@ fun SettingsScreen(
                 onValueChange = { v -> viewModel.setRetentionDays(context, v.roundToInt()) },
                 description = "Ulubione nie są kasowane nigdy, niezależnie od tego ustawienia. 0 = nie kasuj nic.",
             )
+            SwitchRow(
+                label = "Zachowuj odrzucone",
+                description = "Zdarzenia poniżej minVoicedMs trafiają do zakładki „Odrzucone” zamiast znikać. " +
+                    "Dopóki progi nie są dostrojone, to jedyny sposób sprawdzić, czy filtr nie wycina mowy.",
+                checked = settings.keepDiscardedClips,
+                onCheckedChange = { v -> viewModel.update { it.copy(keepDiscardedClips = v) } },
+            )
+            if (settings.keepDiscardedClips) {
+                ParameterSlider(
+                    label = "Trzymaj odrzucone przez",
+                    valueText = "${settings.discardedRetentionDays} dni",
+                    value = settings.discardedRetentionDays.toFloat(),
+                    range = NightVoxSettings.DISCARDED_RETENTION_RANGE_DAYS.first.toFloat()..
+                        NightVoxSettings.DISCARDED_RETENTION_RANGE_DAYS.last.toFloat(),
+                    steps = 28,
+                    onValueChange = { v -> viewModel.update { it.copy(discardedRetentionDays = v.roundToInt()) } },
+                    description = "Kosz służy do strojenia, więc ma krótszy termin niż zwykłe nagrania.",
+                )
+            }
             OutlinedButton(onClick = viewModel::runRetentionNow, modifier = Modifier.fillMaxWidth()) {
                 Text("Zastosuj retencję teraz")
             }

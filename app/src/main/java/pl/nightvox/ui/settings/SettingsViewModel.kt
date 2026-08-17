@@ -44,7 +44,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     fun setRetentionDays(context: Context, days: Int) {
         viewModelScope.launch {
             container.settingsStore.update { it.copy(retentionDays = days) }
-            RetentionWorker.schedule(context, days)
+            RetentionWorker.schedule(context)
         }
     }
 
@@ -99,14 +99,22 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun runRetentionNow() {
         viewModelScope.launch {
-            val days = container.settingsStore.current().retentionDays
-            val deleted = container.clipRepository.applyRetention(days)
+            val settings = container.settingsStore.current()
+            val deleted = container.clipRepository.applyRetention(
+                retentionDays = settings.retentionDays,
+                discardedRetentionDays = settings.discardedRetentionDays,
+            )
             _message.value = if (deleted == 0) "Nic nie kwalifikowało się do skasowania" else "Skasowano $deleted klipów"
             refreshStorage()
         }
     }
 
-    fun diagnosticsFile(): File? = container.diagnostics.snapshotForSharing()
+    fun diagnosticsFile(): File? {
+        // Wpisy lecą przez kolejkę na osobny wątek — bez flusha udostępnilibyśmy log
+        // bez ostatnich, czyli zwykle najciekawszych, linii.
+        container.diagnostics.flush()
+        return container.diagnostics.snapshotForSharing()
+    }
 
     fun consumeMessage() {
         _message.value = null

@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import pl.nightvox.NightVoxApp
@@ -36,16 +37,23 @@ class HomeViewModel(private val app: NightVoxApp) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            RecorderStateHolder.state.collect { state ->
-                if (!state.isRunning) {
-                    if (_levelHistory.value.isNotEmpty()) _levelHistory.value = emptyList()
-                    return@collect
+            // Tylko realne pomiary poziomu przesuwają wykres. Bez distinctUntilChangedBy
+            // dopisywalibyśmy słupek także przy zamknięciu klipu czy odświeżeniu wolnego
+            // miejsca, przez co meter „skakał” bez związku z dźwiękiem.
+            RecorderStateHolder.state
+                .distinctUntilChangedBy { it.levelUpdates to it.isRunning }
+                .collect { state ->
+                    if (!state.isRunning) {
+                        if (_levelHistory.value.isNotEmpty()) _levelHistory.value = emptyList()
+                        return@collect
+                    }
+                    val updated = _levelHistory.value + state.levelDb
+                    _levelHistory.value = if (updated.size > HISTORY_CAPACITY) {
+                        updated.subList(updated.size - HISTORY_CAPACITY, updated.size)
+                    } else {
+                        updated
+                    }
                 }
-                val updated = _levelHistory.value + state.levelDb
-                _levelHistory.value =
-                    if (updated.size > HISTORY_CAPACITY) updated.subList(updated.size - HISTORY_CAPACITY, updated.size)
-                    else updated
-            }
         }
         viewModelScope.launch {
             while (true) {
