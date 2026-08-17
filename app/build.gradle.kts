@@ -20,11 +20,27 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    /*
+     * ONNX Runtime wnosi ok. 70 MB natywnych bibliotek na cztery architektury.
+     * Filtrowanie ABI do samego arm64 zmniejszało APK, ale sprawiało, że pakiet deklarował
+     * `native-code: arm64-v8a` i instalator odrzucał go na każdym innym urządzeniu jako
+     * „niezgodny z telefonem”. Rozmiar nie jest wart utraty możliwości instalacji, więc
+     * zamiast filtra są splity: małe APK per architektura plus jedno uniwersalne, które
+     * zainstaluje się wszędzie.
+     */
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
         release {
             // Sideload / personal build: signed with the debug key so `assembleRelease`
@@ -33,7 +49,6 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
-            ndk { abiFilters += listOf("arm64-v8a") }
         }
     }
 

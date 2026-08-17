@@ -29,8 +29,23 @@ własny telefon, nie do dystrybucji.
 ### Gotowy APK z CI
 
 Każdy push buduje APK i wystawia go jako artefakt `nightvox-apk` (zakładka **Actions** →
-konkretny przebieg → sekcja *Artifacts*). W środku są dwa pliki: `app-release.apk` (mniejszy,
-z minifikacją — ten do normalnego używania) i `app-debug.apk`.
+konkretny przebieg → sekcja *Artifacts*).
+
+**Jeśli nie wiesz, jaką architekturę ma twój telefon — zainstaluj `app-universal-release.apk`.**
+Zainstaluje się na każdym urządzeniu, kosztem rozmiaru (~74 MB). Pozostałe pliki to warianty
+per architektura, znacznie mniejsze, ale zainstalują się **tylko** na pasującym urządzeniu:
+
+| Plik | Rozmiar | Dla kogo |
+|---|---|---|
+| `app-universal-release.apk` | ~74 MB | działa wszędzie — bierz ten, gdy nie masz pewności |
+| `app-arm64-v8a-release.apk` | ~22 MB | zdecydowana większość telefonów z ostatnich lat |
+| `app-armeabi-v7a-release.apk` | ~16 MB | starsze/budżetowe 32-bitowe ARM |
+| `app-x86_64-release.apk` | ~24 MB | emulatory, ChromeOS, tablety x86 |
+
+Podział bierze się stąd, że ONNX Runtime (Silero VAD) wnosi ok. 70 MB natywnych bibliotek na
+cztery architektury. Wcześniejsza próba zaoszczędzenia miejsca przez ograniczenie builda do
+`arm64-v8a` skończyła się komunikatem „aplikacja niezgodna z telefonem" na wszystkim, co nie
+było arm64 — dlatego teraz są splity plus wariant uniwersalny, a nie filtr.
 
 Klucz debugowy jest trzymany w cache Actions, więc kolejne APK z CI instalują się na wierzch
 poprzednich. Nie da się natomiast zainstalować APK z CI na wierzch zbudowanego lokalnie (i
@@ -185,10 +200,10 @@ i przegapić ciche mamrotanie, więc to filtr miękki, nie wyrok.
 ~0.001 **na wszystko**, łącznie z mową — psuje się bezobjawowo. Dlatego to jest osobna
 czysta klasa `VadChunker` z własnymi testami, a nie kilka linijek w wrapperze ONNX.
 
-ONNX Runtime wnosi ok. 70 MB natywnych bibliotek na cztery architektury, więc APK jest
-ograniczony do `arm64-v8a` (release) i dodatkowo `x86_64` w debugu, żeby działał emulator
-CI. Release waży przez to ~22 MB zamiast ~130 MB. Urządzenie 32-bitowe wymaga dołożenia
-`armeabi-v7a` w `app/build.gradle.kts`.
+ONNX Runtime wnosi ok. 70 MB natywnych bibliotek na cztery architektury. Build produkuje
+splity per architektura (~16–24 MB) plus wariant uniwersalny (~74 MB) — patrz „Gotowy APK
+z CI". Filtrowanie ABI byłoby mniejsze, ale sprawia, że pakiet deklaruje `native-code`
+jednej architektury i instalator odrzuca go wszędzie indziej jako „niezgodny z telefonem".
 
 ### Kosz „Odrzucone”
 
