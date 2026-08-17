@@ -10,6 +10,7 @@ import android.os.PowerManager
 import android.os.StatFs
 import android.util.Log
 import androidx.core.app.ServiceCompat
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -96,13 +97,22 @@ class RecorderService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // startForegroundService() zobowiązuje do wywołania startForeground() — niezależnie
+        // od tego, co zrobimy dalej. Wcześniej dwie ścieżki (ponowny START przy trwającej
+        // sesji, intent bez akcji) wracały bez tego, a system odpowiada na złamanie tej
+        // obietnicy ubiciem procesu.
+        if (!ensureForeground()) return START_NOT_STICKY
+
         when (intent?.action) {
             ACTION_STOP -> {
                 stopSession(ClipRepository.END_REASON_USER)
                 return START_NOT_STICKY
             }
             ACTION_START -> startSession()
-            else -> if (sessionId == null) stopSelf()
+            else -> if (sessionId == null) {
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
         }
         // NOT_STICKY: system nie ma prawa nas wskrzesić w tle — FGS mikrofonowy i tak
         // nie wystartuje bez widocznego Activity, a „zombie” serwis tylko myli.
@@ -116,32 +126,55 @@ class RecorderService : Service() {
 
     // --- start / stop sesji ---
 
+    /**
+     * Wchodzi na pierwszy plan. Idempotentne — kolejne wywołania tylko odświeżają notyfikację.
+     * Zwraca `false`, gdy system odmówił (najczęściej `ForegroundServiceStartNotAllowedException`,
+     * bo żadne Activity nie było widoczne).
+     */
+    private fun ensureForeground(): Boolean = try {
+        ServiceCompat.startForeground(
+            this,
+            NotificationHelper.NOTIFICATION_ID,
+            notifications.buildRecordingNotification(RecorderStateHolder.state.value),
+            foregroundServiceType(),
+        )
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "startForeground odrzucone", e)
+        diagnostics.log("service", "startForeground odrzucone: ${e.javaClass.name}: ${e.message}")
+        RecorderStateHolder.update {
+            RecorderState(lastError = "System nie pozwolił wystartować nagrywania z tła. Otwórz apkę i spróbuj ponownie.")
+        }
+        stopSelf()
+        false
+    }
+
     private fun startSession() {
         if (sessionId != null || scope != null) return
         stopping = false
 
-        val state = RecorderState(isRunning = true, startedAtMs = System.currentTimeMillis())
-        RecorderStateHolder.update { state }
+        RecorderStateHolder.update { RecorderState(isRunning = true, startedAtMs = System.currentTimeMillis()) }
+        notifications.updateRecordingNotification(RecorderStateHolder.state.value)
 
-        try {
-            ServiceCompat.startForeground(
-                this,
-                NotificationHelper.NOTIFICATION_ID,
-                notifications.buildRecordingNotification(state),
-                foregroundServiceType(),
-            )
-        } catch (e: Exception) {
-            // Najczęściej ForegroundServiceStartNotAllowedException — Activity nie było widoczne.
-            Log.e(TAG, "startForeground odrzucone", e)
-            diagnostics.log("service", "startForeground odrzucone: ${e.message}")
+        // Bez tego dowolny wyjątek w korutynie sesji leciał do domyślnego handlera i ubijał
+        // proces — użytkownik widział znikającą apkę zamiast informacji, co się zepsuło.
+        val errors = CoroutineExceptionHandler { _, error ->
+            Log.e(TAG, "Sesja przewróciła się", error)
+            diagnostics.log("service", "wyjątek w sesji: ${error.javaClass.name}: ${error.message}")
             RecorderStateHolder.update {
-                RecorderState(lastError = "System nie pozwolił wystartować nagrywania z tła. Otwórz apkę i spróbuj ponownie.")
+                it.copy(
+                    isRunning = false,
+                    lastError = "Nagrywanie przerwane błędem: ${error.javaClass.simpleName}. " +
+                        "Szczegóły w Ustawienia → Diagnostyka → Udostępnij log.",
+                )
             }
-            stopSelf()
-            return
+            notifications.postAlert(
+                "NightVox przerwał nagrywanie",
+                "Wystąpił błąd: ${error.javaClass.simpleName}. Log diagnostyczny zawiera szczegóły.",
+            )
+            runCatching { stopSession(ClipRepository.END_REASON_ERROR, fromDestroy = true) }
         }
-
-        val serviceScope = CoroutineScope(SupervisorJob() + container.ioDispatcher)
+        val serviceScope = CoroutineScope(SupervisorJob() + container.ioDispatcher + errors)
         scope = serviceScope
 
         startJob = serviceScope.launch {

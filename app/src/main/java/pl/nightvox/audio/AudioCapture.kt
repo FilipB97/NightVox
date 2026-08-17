@@ -86,6 +86,19 @@ class AudioCapture(
     // --- wątek capture ---
 
     private fun captureLoop() {
+        // Wątek capture nie ma nad sobą nikogo: niewyłapany błąd tutaj zabijał cały proces,
+        // czyli aplikacja znikała zamiast pokazać, co się stało.
+        try {
+            captureLoopInner()
+        } catch (t: Throwable) {
+            Log.e(TAG, "Wątek capture przewrócił się", t)
+            running.set(false)
+            runCatching { releaseRecord() }
+            listener.onFatalError("Nagrywanie przerwane błędem: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    private fun captureLoopInner() {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
 
         var attempt = 0
@@ -170,6 +183,9 @@ class AudioCapture(
         val bufferBytes = maxOf(minBuffer * 4, frameBytes * 16)
 
         for (source in SOURCE_PREFERENCE) {
+            // Producenci potrafią rzucić z tego konstruktora praktycznie czymkolwiek
+            // (UnsupportedOperationException, RuntimeException z HAL-a). Każde takie
+            // źródło po prostu pomijamy i próbujemy następnego z listy.
             val candidate = try {
                 AudioRecord(
                     source,
@@ -178,12 +194,12 @@ class AudioCapture(
                     AudioFormat.ENCODING_PCM_16BIT,
                     bufferBytes,
                 )
-            } catch (e: IllegalArgumentException) {
-                Log.w(TAG, "AudioRecord(source=$source) odrzucone", e)
-                null
             } catch (e: SecurityException) {
                 Log.w(TAG, "Brak uprawnienia RECORD_AUDIO", e)
                 return null
+            } catch (e: Exception) {
+                Log.w(TAG, "AudioRecord(source=${sourceName(source)}) odrzucone", e)
+                null
             }
 
             if (candidate == null) continue
@@ -192,12 +208,12 @@ class AudioCapture(
                 continue
             }
 
-            disableProcessing(candidate.audioSessionId)
+            runCatching { disableProcessing(candidate.audioSessionId) }
             try {
                 candidate.startRecording()
-            } catch (e: IllegalStateException) {
-                Log.w(TAG, "startRecording() nie wystartowało dla source=$source", e)
-                candidate.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "startRecording() nie wystartowało dla ${sourceName(source)}", e)
+                runCatching { candidate.release() }
                 continue
             }
             if (candidate.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
@@ -207,7 +223,8 @@ class AudioCapture(
 
             record = candidate
             activeSource = source
-            registerSilenceCallback(candidate)
+            runCatching { registerSilenceCallback(candidate) }
+                .onFailure { Log.w(TAG, "Nie udało się zarejestrować callbacku wyciszenia", it) }
             return candidate
         }
         return null

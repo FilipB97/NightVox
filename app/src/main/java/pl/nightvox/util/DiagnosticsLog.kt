@@ -45,6 +45,15 @@ class DiagnosticsLog(context: Context) {
         runCatching { writer.execute { append(line) } }
     }
 
+    /**
+     * Zapis synchroniczny, ignorujący przełącznik diagnostyki. Wyłącznie dla crashy: proces
+     * zaraz umrze, więc kolejka na osobnym wątku nigdy by się nie wykonała, a informacja o
+     * przyczynie jest wtedy jedyną, jaka istnieje.
+     */
+    fun logAlwaysBlocking(tag: String, message: String) {
+        append("${stamp.format(Date())} [$tag] $message\n")
+    }
+
     @Synchronized
     private fun append(line: String) {
         try {

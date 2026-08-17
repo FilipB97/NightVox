@@ -58,8 +58,10 @@ class SileroVad private constructor(
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Inferencja VAD nie powiodła się", e)
+        } catch (t: Throwable) {
+            // Także Error (np. UnsatisfiedLinkError przy wadliwej bibliotece natywnej):
+            // VAD jest dodatkiem, nagrywanie ma lecieć dalej.
+            Log.w(TAG, "Inferencja VAD nie powiodła się", t)
             0f
         }
     }

@@ -14,6 +14,7 @@ import pl.nightvox.NightVoxApp
 import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.service.RecorderState
 import pl.nightvox.service.RecorderStateHolder
+import pl.nightvox.util.CrashReporter
 import pl.nightvox.util.EnvironmentStatus
 import pl.nightvox.util.SystemChecks
 
@@ -30,6 +31,9 @@ class HomeViewModel(private val app: NightVoxApp) : ViewModel() {
         EnvironmentStatus(ignoringBatteryOptimizations = true, isCharging = true, freeBytes = -1),
     )
     val environment: StateFlow<EnvironmentStatus> = _environment.asStateFlow()
+
+    private val _lastCrash = MutableStateFlow<String?>(null)
+    val lastCrash: StateFlow<String?> = _lastCrash.asStateFlow()
 
     /** Historia poziomu do live metera. Trzymana tutaj, nie w kompozycji. */
     private val _levelHistory = MutableStateFlow<List<Float>>(emptyList())
@@ -55,12 +59,28 @@ class HomeViewModel(private val app: NightVoxApp) : ViewModel() {
                     }
                 }
         }
+        refreshCrashReport()
         viewModelScope.launch {
             while (true) {
                 refreshEnvironment()
                 delay(ENVIRONMENT_REFRESH_MS)
             }
         }
+    }
+
+    fun refreshCrashReport() {
+        _lastCrash.value = CrashReporter.lastCrashSummary(app)
+    }
+
+    /** Log ze śladem po crashu, gotowy do udostępnienia. */
+    fun crashLogFile(): java.io.File? {
+        container.diagnostics.flush()
+        return container.diagnostics.snapshotForSharing()
+    }
+
+    fun dismissCrash() {
+        CrashReporter.clear(app)
+        _lastCrash.value = null
     }
 
     fun refreshEnvironment() {

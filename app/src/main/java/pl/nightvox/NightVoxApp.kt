@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import pl.nightvox.service.RecorderStateHolder
+import pl.nightvox.util.CrashReporter
 import pl.nightvox.work.RetentionWorker
 
 class NightVoxApp : Application() {
@@ -18,6 +19,9 @@ class NightVoxApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        // Instalujemy jako pierwsze: crash w dowolnym miejscu ma zostawić ślad, który da
+        // się udostępnić z Ustawień. Sideload nie ma Play Console, a apka celowo nie ma sieci.
+        CrashReporter(this, container.diagnostics).install()
 
         appScope.launch {
             // Po crashu w środku nocy zostają sesje bez `endedAt` i wiersze bez plików (§6.6).

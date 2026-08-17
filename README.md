@@ -63,6 +63,13 @@ odinstalować starą wersję.
 Rano: lista klipów, a w Ustawieniach → Diagnostyka log z przejściami bramki. Ten log jest
 jedynym sensownym wejściem do strojenia progów po pierwszej nocy.
 
+### Gdy apka się wywali
+
+Niewyłapane wyjątki lądują w logu diagnostycznym razem z modelem telefonu, wersją Androida
+i listą ABI, a po ponownym uruchomieniu ekran główny pokazuje kartę z przyciskiem
+„Udostępnij log błędu”. Sideload nie ma Play Console, a apka celowo nie ma dostępu do sieci,
+więc to jedyna droga, żeby stack trace w ogóle do kogoś dotarł.
+
 ---
 
 ## Jak to działa
