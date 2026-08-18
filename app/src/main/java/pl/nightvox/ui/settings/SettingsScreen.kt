@@ -153,28 +153,30 @@ fun SettingsScreen(
                 description = "Ochrona przed wentylatorem albo deszczem za oknem, który trzyma bramkę otwartą godzinami.",
             )
 
-            // --- VAD ---
-            SectionHeader("Detekcja mowy (VAD)")
+            // --- filtr mowy ---
+            SectionHeader("Filtr mowy")
             SwitchRow(
-                label = "Silero VAD",
-                description = "Drugi stopień detekcji: bramka RMS wybudza sieć, sieć ocenia, czy to mowa. " +
-                    "Model działa lokalnie, nic nie jest pobierane.",
-                checked = settings.vadEnabled,
-                onCheckedChange = { v -> viewModel.update { it.copy(vadEnabled = v) } },
+                label = "Odsiewaj oddech i chrapanie",
+                description = "Bramka reaguje na głośność, więc przepuszcza wszystko, co głośniejsze od tła — " +
+                    "także oddech i chrapanie. Analiza widmowa sprawdza, czy w klipie jest struktura mowy: " +
+                    "formanty powyżej 300 Hz, zmienność widma i rytm sylab. Nic nie kasuje — klipy pod progiem " +
+                    "trafiają do „Odrzucone”.",
+                checked = settings.speechFilterEnabled,
+                onCheckedChange = { v -> viewModel.update { it.copy(speechFilterEnabled = v) } },
             )
-            if (settings.vadEnabled) {
+            if (settings.speechFilterEnabled) {
                 ParameterSlider(
-                    label = "Próg VAD",
-                    valueText = String.format(java.util.Locale.US, "%.2f", settings.vadThreshold),
-                    value = settings.vadThreshold,
-                    range = NightVoxSettings.VAD_THRESHOLD_RANGE,
-                    steps = 15,
+                    label = "Próg mowy",
+                    valueText = String.format(java.util.Locale.US, "%.2f", settings.speechFilterThreshold),
+                    value = settings.speechFilterThreshold,
+                    range = NightVoxSettings.SPEECH_THRESHOLD_RANGE,
+                    steps = 12,
                     onValueChange = { v ->
-                        viewModel.update { it.copy(vadThreshold = (Math.round(v * 20f) / 20f)) }
+                        viewModel.update { it.copy(speechFilterThreshold = Math.round(v * 20f) / 20f) }
                     },
-                    description = "Klipy poniżej progu trafiają do „Odrzucone”, skąd da się je odsłuchać " +
-                        "i przywrócić — nigdy nie są kasowane. Silero potrafi wziąć chrapanie za mowę i " +
-                        "przegapić ciche mamrotanie, więc to filtr miękki, nie wyrok.",
+                    description = "Wyżej = mniej klipów, ale rośnie ryzyko wycięcia cichego mamrotania. " +
+                        "Ocena każdego klipu jest widoczna na jego ekranie i w logu diagnostycznym — " +
+                        "po nocy warto porównać oceny klipów z mową i tych z samym oddechem.",
                 )
             }
 
@@ -223,7 +225,8 @@ fun SettingsScreen(
             )
             SwitchRow(
                 label = "Zachowuj odrzucone",
-                description = "Zdarzenia poniżej minVoicedMs trafiają do zakładki „Odrzucone” zamiast znikać. " +
+                description = "Zdarzenia poniżej minVoicedMs i klipy pod progiem mowy trafiają do zakładki " +
+                    "„Odrzucone” zamiast znikać. " +
                     "Dopóki progi nie są dostrojone, to jedyny sposób sprawdzić, czy filtr nie wycina mowy.",
                 checked = settings.keepDiscardedClips,
                 onCheckedChange = { v -> viewModel.update { it.copy(keepDiscardedClips = v) } },

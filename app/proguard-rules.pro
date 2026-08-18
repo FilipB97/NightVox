@@ -10,7 +10,3 @@
 -keepclasseswithmembers class pl.nightvox.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
-
-# ONNX Runtime woła swoje klasy z natywnego kodu — R8 nie widzi tych referencji.
--keep class ai.onnxruntime.** { *; }
--dontwarn ai.onnxruntime.**

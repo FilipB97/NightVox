@@ -10,6 +10,7 @@ import android.os.PowerManager
 import android.os.StatFs
 import android.util.Log
 import androidx.core.app.ServiceCompat
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -29,13 +30,13 @@ import pl.nightvox.audio.GateConfig
 import pl.nightvox.audio.GateState
 import pl.nightvox.audio.NoiseFloorTracker
 import pl.nightvox.audio.RingBuffer
-import pl.nightvox.audio.vad.SileroVad
-import pl.nightvox.audio.vad.VadResult
+import pl.nightvox.audio.speech.SpeechAnalyzer
+import pl.nightvox.audio.speech.SpeechScore
 import pl.nightvox.data.ClipRepository
 import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.encode.ClipWriter
 import pl.nightvox.encode.FinishedClip
-import pl.nightvox.encode.SileroSpeechDetector
+import pl.nightvox.encode.HeuristicSpeechDetector
 import pl.nightvox.encode.WavDumpWriter
 import pl.nightvox.util.DiagnosticsLog
 import java.io.File
@@ -79,7 +80,6 @@ class RecorderService : Service() {
     private var interruptions = 0
     private var clipCount = 0
     private var discardedCount = 0
-    private var vadActive = false
     private var stopping = false
 
     private sealed interface PipelineEvent {
@@ -96,13 +96,22 @@ class RecorderService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // startForegroundService() zobowiązuje do wywołania startForeground() — niezależnie
+        // od tego, co zrobimy dalej. Wcześniej dwie ścieżki (ponowny START przy trwającej
+        // sesji, intent bez akcji) wracały bez tego, a system odpowiada na złamanie tej
+        // obietnicy ubiciem procesu.
+        if (!ensureForeground()) return START_NOT_STICKY
+
         when (intent?.action) {
             ACTION_STOP -> {
                 stopSession(ClipRepository.END_REASON_USER)
                 return START_NOT_STICKY
             }
             ACTION_START -> startSession()
-            else -> if (sessionId == null) stopSelf()
+            else -> if (sessionId == null) {
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
         }
         // NOT_STICKY: system nie ma prawa nas wskrzesić w tle — FGS mikrofonowy i tak
         // nie wystartuje bez widocznego Activity, a „zombie” serwis tylko myli.
@@ -116,32 +125,55 @@ class RecorderService : Service() {
 
     // --- start / stop sesji ---
 
+    /**
+     * Wchodzi na pierwszy plan. Idempotentne — kolejne wywołania tylko odświeżają notyfikację.
+     * Zwraca `false`, gdy system odmówił (najczęściej `ForegroundServiceStartNotAllowedException`,
+     * bo żadne Activity nie było widoczne).
+     */
+    private fun ensureForeground(): Boolean = try {
+        ServiceCompat.startForeground(
+            this,
+            NotificationHelper.NOTIFICATION_ID,
+            notifications.buildRecordingNotification(RecorderStateHolder.state.value),
+            foregroundServiceType(),
+        )
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "startForeground odrzucone", e)
+        diagnostics.log("service", "startForeground odrzucone: ${e.javaClass.name}: ${e.message}")
+        RecorderStateHolder.update {
+            RecorderState(lastError = "System nie pozwolił wystartować nagrywania z tła. Otwórz apkę i spróbuj ponownie.")
+        }
+        stopSelf()
+        false
+    }
+
     private fun startSession() {
         if (sessionId != null || scope != null) return
         stopping = false
 
-        val state = RecorderState(isRunning = true, startedAtMs = System.currentTimeMillis())
-        RecorderStateHolder.update { state }
+        RecorderStateHolder.update { RecorderState(isRunning = true, startedAtMs = System.currentTimeMillis()) }
+        notifications.updateRecordingNotification(RecorderStateHolder.state.value)
 
-        try {
-            ServiceCompat.startForeground(
-                this,
-                NotificationHelper.NOTIFICATION_ID,
-                notifications.buildRecordingNotification(state),
-                foregroundServiceType(),
-            )
-        } catch (e: Exception) {
-            // Najczęściej ForegroundServiceStartNotAllowedException — Activity nie było widoczne.
-            Log.e(TAG, "startForeground odrzucone", e)
-            diagnostics.log("service", "startForeground odrzucone: ${e.message}")
+        // Bez tego dowolny wyjątek w korutynie sesji leciał do domyślnego handlera i ubijał
+        // proces — użytkownik widział znikającą apkę zamiast informacji, co się zepsuło.
+        val errors = CoroutineExceptionHandler { _, error ->
+            Log.e(TAG, "Sesja przewróciła się", error)
+            diagnostics.log("service", "wyjątek w sesji: ${error.javaClass.name}: ${error.message}")
             RecorderStateHolder.update {
-                RecorderState(lastError = "System nie pozwolił wystartować nagrywania z tła. Otwórz apkę i spróbuj ponownie.")
+                it.copy(
+                    isRunning = false,
+                    lastError = "Nagrywanie przerwane błędem: ${error.javaClass.simpleName}. " +
+                        "Szczegóły w Ustawienia → Diagnostyka → Udostępnij log.",
+                )
             }
-            stopSelf()
-            return
+            notifications.postAlert(
+                "NightVox przerwał nagrywanie",
+                "Wystąpił błąd: ${error.javaClass.simpleName}. Log diagnostyczny zawiera szczegóły.",
+            )
+            runCatching { stopSession(ClipRepository.END_REASON_ERROR, fromDestroy = true) }
         }
-
-        val serviceScope = CoroutineScope(SupervisorJob() + container.ioDispatcher)
+        val serviceScope = CoroutineScope(SupervisorJob() + container.ioDispatcher + errors)
         scope = serviceScope
 
         startJob = serviceScope.launch {
@@ -157,7 +189,11 @@ class RecorderService : Service() {
 
             val id = repository.startSession(settings, noiseFloorDb = 0f)
             sessionId = id
-            diagnostics.log("session", "start id=$id config=$config vad=${settings.vadEnabled}")
+            diagnostics.log(
+                "session",
+                "start id=$id config=$config filtrMowy=" +
+                    if (settings.speechFilterEnabled) "%.2f".format(settings.speechFilterThreshold) else "off",
+            )
             RecorderStateHolder.update { it.copy(sessionId = id, startedAtMs = sessionStartedAt) }
 
             acquireWakeLock()
@@ -177,22 +213,20 @@ class RecorderService : Service() {
         )
         gate = newGate
 
-        val detector = if (settings.vadEnabled) {
-            SileroVad.create(this, config.sampleRate)?.let { vad ->
-                SileroSpeechDetector(vad, config.sampleRate, settings.vadThreshold)
-            }.also {
-                if (it == null) diagnostics.log("vad", "model niedostępny — zostaje sama bramka RMS")
-            }
-        } else {
-            null
-        }
-        vadActive = detector != null
-
         val writer = ClipWriter(
             clipsDir = container.clipsDir,
             sampleRate = config.sampleRate,
             keepDiscarded = settings.keepDiscardedClips,
-            speechDetector = detector,
+            speechDetector = if (settings.speechFilterEnabled) {
+                HeuristicSpeechDetector(
+                    SpeechAnalyzer(
+                        sampleRate = config.sampleRate,
+                        speechThreshold = settings.speechFilterThreshold,
+                    ),
+                )
+            } else {
+                null
+            },
             callbacks = writerCallbacks(),
         )
         clipWriter = writer
@@ -314,18 +348,18 @@ class RecorderService : Service() {
     private fun writerCallbacks() = object : ClipWriter.Callbacks {
         override suspend fun onClipFinished(clip: FinishedClip) {
             val id = sessionId ?: return
-            val vad = clip.vad
-            // VAD nie kasuje niczego: klip poniżej progu ląduje w koszu, skąd da się go
-            // odsłuchać i przywrócić. Silero potrafi wziąć chrapanie za mowę i przegapić
-            // ciche mamrotanie, więc twardy filtr byłby tu nieuczciwy wobec danych.
-            val belowThreshold = vad != null && vad.maxProbability < settings.vadThreshold
+            val speech = clip.speech
+            // Filtr mowy niczego nie kasuje: klip pod progiem ląduje w koszu, skąd da się go
+            // odsłuchać i przywrócić. Heurystyka widmowa jest zgadnięta, nie wytrenowana —
+            // twarde kasowanie byłoby tu nieuczciwe wobec danych.
+            val belowThreshold = speech != null && speech.score < settings.speechFilterThreshold
 
             repository.addClip(
                 sessionId = id,
                 file = clip.file,
                 stats = clip.stats,
-                discardReason = if (belowThreshold) ClipRepository.DISCARD_REASON_LOW_VAD else null,
-                vadScore = vad?.maxProbability,
+                discardReason = if (belowThreshold) ClipRepository.DISCARD_REASON_NOT_SPEECH else null,
+                vadScore = speech?.score,
             )
             if (belowThreshold) discardedCount++ else clipCount++
 
@@ -333,8 +367,8 @@ class RecorderService : Service() {
                 "clip",
                 "zapisany ${clip.file.name} ${clip.stats.durationMs}ms " +
                     "voiced=${clip.stats.voicedMs}ms peak=${"%.1f".format(clip.stats.peakDb)} " +
-                    "segments=${clip.stats.segments}" + vadSuffix(vad) +
-                    if (belowThreshold) " -> kosz (poniżej progu VAD)" else "",
+                    "segments=${clip.stats.segments}" + speechSuffix(speech) +
+                    if (belowThreshold) " -> kosz (poniżej progu mowy)" else "",
             )
             RecorderStateHolder.update { it.copy(clipCount = clipCount, discardedCount = discardedCount) }
             notifications.updateRecordingNotification(RecorderStateHolder.state.value)
@@ -344,7 +378,7 @@ class RecorderService : Service() {
             reason: DiscardReason,
             stats: ClipStats,
             file: File?,
-            vad: VadResult?,
+            speech: SpeechScore?,
         ) {
             discardedCount++
             val sessionId = sessionId
@@ -354,13 +388,13 @@ class RecorderService : Service() {
                     file = file,
                     stats = stats,
                     discardReason = reason.name,
-                    vadScore = vad?.maxProbability,
+                    vadScore = speech?.score,
                 )
             }
             diagnostics.log(
                 "clip",
                 "odrzucony (${reason.name}) voiced=${stats.voicedMs}ms " +
-                    "peak=${"%.1f".format(stats.peakDb)}${vadSuffix(vad)} " +
+                    "peak=${"%.1f".format(stats.peakDb)}${speechSuffix(speech)} " +
                     if (file != null) "zachowany" else "skasowany",
             )
             RecorderStateHolder.update { it.copy(discardedCount = discardedCount) }
@@ -382,11 +416,12 @@ class RecorderService : Service() {
         }
     }
 
-    private fun vadSuffix(vad: VadResult?): String = if (vad == null) {
-        ""
-    } else {
-        " vad=${"%.2f".format(vad.maxProbability)} mowa=${vad.speechMs}ms"
-    }
+    /**
+     * Cechy klipu do logu. To jest jedyne wiarygodne źródło danych do strojenia progu:
+     * po nocy widać, jaką ocenę dostały klipy, które okazały się mową, a jaką te z oddechem.
+     */
+    private fun speechSuffix(speech: SpeechScore?): String =
+        if (speech == null) "" else " " + speech.describe()
 
     private fun startMonitors(serviceScope: CoroutineScope) {
         notificationJob = serviceScope.launch {
@@ -470,7 +505,7 @@ class RecorderService : Service() {
             }
             diagnostics.log(
                 "session",
-                "koniec ($reason) klipy=$clipCount odrzucone=$discardedCount vad=$vadActive " +
+                "koniec ($reason) klipy=$clipCount odrzucone=$discardedCount " +
                     "przerwania=$interruptions zgubione_ramki=${droppedFrames.get()}",
             )
         }

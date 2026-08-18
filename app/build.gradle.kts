@@ -14,8 +14,8 @@ android {
         applicationId = "pl.nightvox"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.3.0"
+        versionCode = 5
+        versionName = "0.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -24,7 +24,6 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
         release {
             // Sideload / personal build: signed with the debug key so `assembleRelease`
@@ -33,7 +32,6 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
-            ndk { abiFilters += listOf("arm64-v8a") }
         }
     }
 
@@ -53,11 +51,6 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-        // Model musi trafić do APK bez kompresji — inaczej ONNX Runtime nie zmapuje go
-        // z assetów i trzeba by go najpierw kopiować na dysk.
-        androidResources {
-            noCompress += "onnx"
         }
     }
 
@@ -99,9 +92,6 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
-
-    // Silero VAD (faza 3). Model .onnx leży w assets — nic nie jest pobierane w runtime.
-    implementation(libs.onnxruntime.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

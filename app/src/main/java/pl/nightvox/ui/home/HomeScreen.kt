@@ -55,6 +55,7 @@ import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.StatTile
 import pl.nightvox.util.Format
+import pl.nightvox.util.Sharing
 import pl.nightvox.util.SystemChecks
 
 @Composable
@@ -67,6 +68,7 @@ fun HomeScreen(
     val state by viewModel.recorderState.collectAsStateWithLifecycle()
     val environment by viewModel.environment.collectAsStateWithLifecycle()
     val history by viewModel.levelHistory.collectAsStateWithLifecycle()
+    val lastCrash by viewModel.lastCrash.collectAsStateWithLifecycle()
 
     var hasMicPermission by remember { mutableStateOf(context.hasPermission(Manifest.permission.RECORD_AUDIO)) }
     var hasNotificationPermission by remember { mutableStateOf(context.hasNotificationPermission()) }
@@ -90,7 +92,10 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(Unit) { viewModel.refreshEnvironment() }
+    LaunchedEffect(Unit) {
+        viewModel.refreshEnvironment()
+        viewModel.refreshCrashReport()
+    }
 
     Column(
         Modifier
@@ -131,6 +136,24 @@ fun HomeScreen(
         )
 
         Spacer(Modifier.height(24.dp))
+
+        lastCrash?.let { summary ->
+            NoticeCard(
+                icon = Icons.Filled.ErrorOutline,
+                title = "Poprzednim razem aplikacja się wywaliła",
+                text = "$summary\n\nLog zawiera pełny ślad błędu razem z modelem telefonu i wersją " +
+                    "Androida. Udostępnij go — bez tego nie da się tego naprawić.",
+                tone = NoticeTone.ERROR,
+                actionLabel = "Udostępnij log błędu",
+                onAction = {
+                    viewModel.crashLogFile()?.let { file ->
+                        Sharing.shareFile(context, file, "text/plain", "Log błędu NightVox")
+                    }
+                    viewModel.dismissCrash()
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+        }
 
         if (state.isRunning) {
             RunningSessionPanel(state = state, history = history, nowMs = nowMs)

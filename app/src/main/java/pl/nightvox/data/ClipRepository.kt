@@ -210,7 +210,10 @@ class ClipRepository(
         const val END_REASON_NO_SPACE = "no_space"
         const val END_REASON_ERROR = "error"
 
-        /** Bramka RMS przepuściła, ale VAD nie potwierdził mowy. */
+        /** Bramka RMS przepuściła, ale analiza widmowa nie uznała tego za mowę. */
+        const val DISCARD_REASON_NOT_SPEECH = "NOT_SPEECH"
+
+        /** Ten sam powód sprzed wycofania Silero — zostaje, bo takie wiersze są w bazie. */
         const val DISCARD_REASON_LOW_VAD = "LOW_VAD"
     }
 }

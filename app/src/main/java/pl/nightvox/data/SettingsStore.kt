@@ -39,6 +39,8 @@ class SettingsStore(private val context: Context) {
             prefs[Keys.MERGE_GAP_MS] = updated.mergeGapMs
             prefs[Keys.MIN_VOICED_MS] = updated.minVoicedMs
             prefs[Keys.MAX_CLIP_MS] = updated.maxClipMs
+            prefs[Keys.SPEECH_FILTER_ENABLED] = updated.speechFilterEnabled
+            prefs[Keys.SPEECH_FILTER_THRESHOLD] = updated.speechFilterThreshold
             prefs[Keys.AUTO_STOP_ENABLED] = updated.autoStopHour != null
             prefs[Keys.AUTO_STOP_HOUR] = updated.autoStopHour ?: NightVoxSettings.DEFAULTS.autoStopHour ?: 9
             prefs[Keys.AUTO_STOP_MINUTE] = updated.autoStopMinute
@@ -46,8 +48,6 @@ class SettingsStore(private val context: Context) {
             prefs[Keys.RETENTION_DAYS] = updated.retentionDays
             prefs[Keys.KEEP_DISCARDED] = updated.keepDiscardedClips
             prefs[Keys.DISCARDED_RETENTION_DAYS] = updated.discardedRetentionDays
-            prefs[Keys.VAD_ENABLED] = updated.vadEnabled
-            prefs[Keys.VAD_THRESHOLD] = updated.vadThreshold
             prefs[Keys.KEEP_SCREEN_ON] = updated.keepScreenOn
             prefs[Keys.DEBUG_WAV_DUMP] = updated.debugWavDump
             prefs[Keys.DIAGNOSTICS] = updated.diagnosticsEnabled
@@ -69,14 +69,14 @@ class SettingsStore(private val context: Context) {
             mergeGapMs = this[Keys.MERGE_GAP_MS] ?: d.mergeGapMs,
             minVoicedMs = this[Keys.MIN_VOICED_MS] ?: d.minVoicedMs,
             maxClipMs = this[Keys.MAX_CLIP_MS] ?: d.maxClipMs,
+            speechFilterEnabled = this[Keys.SPEECH_FILTER_ENABLED] ?: d.speechFilterEnabled,
+            speechFilterThreshold = this[Keys.SPEECH_FILTER_THRESHOLD] ?: d.speechFilterThreshold,
             autoStopHour = if (autoStopEnabled) this[Keys.AUTO_STOP_HOUR] ?: d.autoStopHour else null,
             autoStopMinute = this[Keys.AUTO_STOP_MINUTE] ?: d.autoStopMinute,
             maxSessionHours = this[Keys.MAX_SESSION_HOURS] ?: d.maxSessionHours,
             retentionDays = this[Keys.RETENTION_DAYS] ?: d.retentionDays,
             keepDiscardedClips = this[Keys.KEEP_DISCARDED] ?: d.keepDiscardedClips,
             discardedRetentionDays = this[Keys.DISCARDED_RETENTION_DAYS] ?: d.discardedRetentionDays,
-            vadEnabled = this[Keys.VAD_ENABLED] ?: d.vadEnabled,
-            vadThreshold = this[Keys.VAD_THRESHOLD] ?: d.vadThreshold,
             keepScreenOn = this[Keys.KEEP_SCREEN_ON] ?: d.keepScreenOn,
             debugWavDump = this[Keys.DEBUG_WAV_DUMP] ?: d.debugWavDump,
             diagnosticsEnabled = this[Keys.DIAGNOSTICS] ?: d.diagnosticsEnabled,
@@ -91,6 +91,8 @@ class SettingsStore(private val context: Context) {
         val MERGE_GAP_MS = longPreferencesKey("merge_gap_ms")
         val MIN_VOICED_MS = longPreferencesKey("min_voiced_ms")
         val MAX_CLIP_MS = longPreferencesKey("max_clip_ms")
+        val SPEECH_FILTER_ENABLED = booleanPreferencesKey("speech_filter_enabled")
+        val SPEECH_FILTER_THRESHOLD = floatPreferencesKey("speech_filter_threshold")
         val AUTO_STOP_ENABLED = booleanPreferencesKey("auto_stop_enabled")
         val AUTO_STOP_HOUR = intPreferencesKey("auto_stop_hour")
         val AUTO_STOP_MINUTE = intPreferencesKey("auto_stop_minute")
@@ -98,8 +100,6 @@ class SettingsStore(private val context: Context) {
         val RETENTION_DAYS = intPreferencesKey("retention_days")
         val KEEP_DISCARDED = booleanPreferencesKey("keep_discarded_clips")
         val DISCARDED_RETENTION_DAYS = intPreferencesKey("discarded_retention_days")
-        val VAD_ENABLED = booleanPreferencesKey("vad_enabled")
-        val VAD_THRESHOLD = floatPreferencesKey("vad_threshold")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val DEBUG_WAV_DUMP = booleanPreferencesKey("debug_wav_dump")
         val DIAGNOSTICS = booleanPreferencesKey("diagnostics_enabled")

@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 import pl.nightvox.audio.ClipStats
 import pl.nightvox.audio.DiscardReason
 import pl.nightvox.audio.GateAction
-import pl.nightvox.audio.vad.VadResult
+import pl.nightvox.audio.speech.SpeechScore
 import java.io.File
 import kotlin.math.PI
 import kotlin.math.abs
@@ -49,7 +49,7 @@ class ClipWriterInstrumentedTest {
             reason: DiscardReason,
             stats: ClipStats,
             file: File?,
-            vad: VadResult?,
+            speech: SpeechScore?,
         ) {
             discarded += reason
             discardedFiles += file
