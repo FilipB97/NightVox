@@ -140,9 +140,14 @@ fun ClipDetailScreen(
                         "TOO_SHORT" -> "Sumaryczny czas ramek powyżej progu (${current.clip.voicedMs} ms) " +
                             "nie osiągnął minVoicedMs. Jeśli to jednak wypowiedź — obniż minVoicedMs " +
                             "albo próg i przywróć klip."
+                        "NOT_SPEECH" -> "Bramka przepuściła, ale analiza widmowa nie znalazła tu struktury " +
+                            "mowy — ocena ${current.clip.vadScore?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "—"}. " +
+                            "Tak wygląda oddech (szum szerokopasmowy bez okresowości) i chrapanie " +
+                            "(buczenie poniżej 90 Hz). Odsłuchaj: jeśli to jednak wypowiedź, obniż próg mowy " +
+                            "w ustawieniach i przywróć klip."
                         "LOW_VAD" -> "Bramka przepuściła, ale Silero VAD nie uznał tego za mowę " +
                             "(${current.clip.vadScore?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "—"}). " +
-                            "Odsłuchaj: jeśli to jednak wypowiedź, obniż próg VAD i przywróć klip."
+                            "Wpis z wcześniejszej wersji aplikacji."
                         else -> "Powód: ${current.clip.discardReason ?: "nieznany"}"
                     },
                     tone = NoticeTone.WARNING,
@@ -208,10 +213,10 @@ fun ClipDetailScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 StatTile("długość", Format.clipDuration(current.clip.durationMs))
-                StatTile("mowa", "${current.clip.voicedMs} ms")
+                StatTile("nad progiem", "${current.clip.voicedMs} ms")
                 StatTile("szczyt", Format.db(current.clip.peakDb))
                 StatTile(
-                    "VAD",
+                    "mowa",
                     current.clip.vadScore?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "—",
                 )
             }

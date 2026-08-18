@@ -189,9 +189,9 @@ private fun ClipListRow(
                 buildString {
                     append(Format.clipDuration(item.clip.durationMs))
                     append(" · szczyt ${Format.db(item.clip.peakDb)}")
-                    append(" · mowa ${item.clip.voicedMs} ms")
+                    append(" · nad progiem ${item.clip.voicedMs} ms")
                     item.clip.vadScore?.let {
-                        append(" · vad ${String.format(java.util.Locale.US, "%.2f", it)}")
+                        append(" · mowa ${String.format(java.util.Locale.US, "%.2f", it)}")
                     }
                     if (item.sizeBytes > 0) append(" · ${Format.bytes(item.sizeBytes)}")
                 },

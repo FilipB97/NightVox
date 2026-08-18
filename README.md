@@ -7,8 +7,10 @@ listę kilku–kilkudziesięciu klipów po kilkanaście sekund zamiast ośmiu go
 Wszystko zostaje lokalnie. Apka **nie ma uprawnienia `INTERNET`** — nagrania fizycznie nie
 mogą opuścić telefonu inaczej niż przez świadome udostępnienie pliku.
 
-Implementacja realizuje [`plan.md`](plan.md). Stan: **fazy 0–2 zrobione**. Faza 3 nie jest
-zaczęta — Silero VAD był zrobiony i został **wycofany**, powód opisany niżej.
+Implementacja realizuje [`plan.md`](plan.md). Stan: **fazy 0–2 zrobione**, z fazy 3 działa
+**filtr mowy** — własna analiza widmowa, która odsiewa oddech i chrapanie od mówienia.
+Silero VAD był zrobiony i został wycofany (natywny crash na urządzeniu docelowym), historia
+i powody niżej.
 
 ---
 
@@ -80,6 +82,10 @@ bramki. Przy triggerze cała zawartość leci do enkodera jako pierwsza — dlat
 sylaba nie ginie. Okno jest zakotwiczone w momencie triggera, więc realnej ciszy sprzed
 wypowiedzi jest `preRoll − attackFrames·20 ms`; test `GateTest` sprawdza to co do próbki.
 
+**Filtr mowy** (`audio/speech/`) jest drugim stopniem: bramka decyduje, *kiedy* nagrywać,
+analiza widmowa decyduje, czy to, co nagrano, brzmi jak mowa, czy jak oddech albo chrapanie.
+Nic nie kasuje — odsyła do kosza. Szczegóły niżej.
+
 **Tło szumu** (`audio/NoiseFloorTracker.kt`) startuje od mediany z 10 s warm-upu (nie EMA —
 trzask ładowarki na starcie nie może zatruć progu na całą noc), potem asymetryczna EMA
 aktualizowana **wyłącznie przy zamkniętej bramce**, żeby długa wypowiedź nie podniosła tła
@@ -88,9 +94,10 @@ i sama się nie wyciszyła.
 ### Cała logika decyzyjna jest czystym Kotlinem
 
 `Gate`, `RingBuffer`, `NoiseFloorTracker`, `LevelMeter`, `GateConfig` nie mają żadnej
-zależności od Androida — łącznie z `VadChunker`, czyli logiką, która najłatwiej psuje się
-po cichu. Dzięki temu 45 testów przechodzi na JVM w kilka sekund, bez emulatora —
-łącznie z kryteriami akceptacji fazy 1 z planu:
+zależności od Androida — tak samo cały pakiet `audio/speech` (FFT, autokorelacja, cechy
+widmowe, scoring), czyli logika, która najłatwiej psuje się po cichu. Dzięki temu testy
+przechodzą na JVM w kilka sekund, bez emulatora — łącznie z kryteriami akceptacji fazy 1
+z planu:
 
 | Test | Co sprawdza |
 |---|---|
@@ -103,8 +110,12 @@ po cichu. Dzięki temu 45 testów przechodzi na JVM w kilka sekund, bez emulator
 | `ciagly halas jest ciety na maxClipMs` | 45 s ciągłego dźwięku → kilka klipów, żaden dłuższy niż limit |
 | `tlo nie rosnie podczas dlugiej wypowiedzi` | 30 s mówienia → tło stoi |
 | `odliczanie warm-upu idzie za ramkami a nie zegarem` | warm-up liczony przetworzonymi ramkami, nie czasem od startu |
-| `kontekst kolejnego chunka to ogon poprzedniego` | układ wejścia VAD: 64 próbki kontekstu + 512 chunka |
-| `krotka mowa w dlugiej ciszy przezywa jako maksimum` | `vadScore` to maksimum, nie średnia |
+| `mowa dostaje wysoka ocene a oddech i chrapanie niska` | filtr mowy rozdziela trzy syntetyczne sygnały |
+| `ocena nie zalezy od glosnosci` | ciche mamrotanie dostaje tę samą ocenę co głośne |
+| `wysokie chrapanie nadal nie jest mowa` | chrapanie z tonem 100 Hz (w zakresie głosu) wciąż odpada |
+| `ton ponizej 90 hz jest karany a nie nagradzany` | okresowość sama w sobie nie jest dowodem mowy |
+| `szept traci czesc oceny ale nie wszystko` | brak tonu krtaniowego nie zeruje oceny |
+| `sinus daje szczyt w swoim prazku` / `energia widma…` | FFT: poprawność i skala (Parseval) |
 
 Testy instrumentacyjne (`app/src/androidTest`) wymagają urządzenia lub emulatora i
 pokrywają integralność `.m4a` (`MediaExtractor` odczytuje zadeklarowaną długość), Room,
@@ -159,6 +170,8 @@ Bez frameworka DI — `AppContainer` w zupełności wystarcza przy tej liczbie o
 | `mergeGapMs` | 2000 | 0–5000 |
 | `minVoicedMs` | 400 | 100–2000 |
 | `maxClipMs` | 120 s | 30–600 s |
+| filtr mowy | włączony | wł./wył. |
+| próg mowy | 0,40 | 0,15–0,80 |
 | auto-stop | 09:00 / max 10 h | — |
 | `retentionDays` | 30 | 0 (nigdy) – 365 |
 | `discardedRetentionDays` | 7 | 1–30 |
@@ -170,12 +183,48 @@ Klipy: AAC-LC 32 kbps mono 16 kHz w `filesDir/clips/{yyyy-MM-dd}/{HHmmss}.m4a`, 
 na minutę. Obok każdego pliku leży `.peaks` — obwiednia liczona przy zapisie, żeby
 rysowanie waveformu nie wymagało ponownego dekodowania.
 
+### Filtr mowy — oddech i chrapanie to nie mówienie
+
+Bramka RMS reaguje na **głośność**, a nocą głośniejsze od tła są trzy różne rzeczy. Pierwsza
+przespana noc na samej bramce dała 102 klipy przez 7 godzin i na żadnym nie było mowy —
+sam oddech i chrapanie. Progiem tego nie da się naprawić: klipy z tej nocy miały szczyty od
+−17 dB do −42 dB, więc żadna wartość `triggerDeltaDb` nie przechodzi między klasami.
+Rozdziela je nie poziom, tylko **kształt sygnału**.
+
+`pl.nightvox.audio.speech` liczy więc cechy widmowe okno po oknie (1024 próbki, skok 32 ms):
+
+| | oddech | chrapanie | mowa |
+|---|---|---|---|
+| okresowość (autokorelacja) | brak | silna | silna (głoski dźwięczne) |
+| ton podstawowy | — | 25–90 Hz | 85–300 Hz |
+| energia powyżej 300 Hz | duża (szum) | mała | duża (formanty) |
+| płaskość widma | wysoka | niska | niska |
+| zmienność widma między oknami | znikoma | znikoma | duża (artykulacja) |
+| rytm obwiedni | ~0,25 Hz | ~0,3 Hz (oddech) | 3–6 Hz (sylaby) |
+
+Żadna pojedyncza cecha nie rozdziela wszystkich trzech — `hiRatio` nie odróżnia oddechu od
+mowy, okresowość nie odróżnia chrapania od mowy — więc ocena jest **iloczynem**, nie sumą:
+buczenie poniżej 90 Hz musi dać się wyzerować, nawet jeśli akurat dostanie punkty za coś
+innego. Wynik 0–1 ląduje w `Clip.vadScore`, klip poniżej progu idzie do kosza (nie do
+kasacji), a próg jest suwakiem w Ustawieniach.
+
+Całość to czysty Kotlin: własna FFT radix-2, autokorelacja na sygnale zdecymowanym do 8 kHz
+i mała DFT widma obwiedni. Zero kodu natywnego — po historii opisanej niżej to jest świadoma
+decyzja, a nie oszczędność. Analiza chodzi tylko wtedy, gdy bramka trzyma otwarty klip, czyli
+przez ułamek nocy.
+
+Uczciwe zastrzeżenie: **wagi są zgadnięte, nie wytrenowane**, a testy jeżdżą na sygnałach
+syntetycznych, które mają zadane własności — dowodzą, że detektor mierzy to, co deklaruje,
+nie że sprawdzi się w konkretnej sypialni. Dlatego ocena każdego klipu (razem z cechami
+składowymi) trafia do logu diagnostycznego, klipy odrzucone zostają do odsłuchania, a próg
+da się przesunąć bez przebudowy aplikacji.
+
 ### Silero VAD — zrobiony i wycofany
 
-VAD z fazy 3 był w pełni zaimplementowany (ONNX Runtime, model 16 kHz w assetach, wynik jako
-`Clip.vadScore`, klipy poniżej progu do kosza zamiast do kasacji). **Został usunięty**, bo na
-urządzeniu docelowym — Galaxy A13 z 32-bitowym Androidem — ONNX Runtime przewracał proces
-natywnie przy tworzeniu sesji, ok. 2,5 s po starcie nagrywania.
+Zanim powstał filtr powyżej, VAD z fazy 3 był w pełni zaimplementowany (ONNX Runtime, model
+16 kHz w assetach, wynik jako `Clip.vadScore`, klipy poniżej progu do kosza). **Został
+usunięty**, bo na urządzeniu docelowym — Galaxy A13 z 32-bitowym Androidem — ONNX Runtime
+przewracał proces natywnie przy tworzeniu sesji, ok. 2,5 s po starcie nagrywania.
 
 Log diagnostyczny pokazywał to jednoznacznie: wpis „ładuję model ONNX”, brak wpisu „model
 gotowy”, a chwilę później wpis `[startup]`, który wykonuje się wyłącznie przy starcie procesu.
@@ -186,17 +235,12 @@ wymagałaby `adb logcat` i tombstone'a z tego konkretnego urządzenia.
 Bilans wypadł jednoznacznie: nagrywanie jest funkcją, bez której ta aplikacja nie ma sensu, a
 VAD dodatkiem. Dodatek, który zabija proces i którego nie da się naprawić bez urządzenia, nie
 zarabia na 12 MB kodu natywnego na architekturę. Po usunięciu APK schudło z 74 MB do 2,7 MB i
-przestał być wybredny co do architektury.
+przestał być wybredny co do architektury. Kolumna `vadScore` została w schemacie i trzyma
+dziś ocenę z filtru opisanego wyżej, więc zamiana nie wymagała migracji.
 
-Co zostało w repo, gotowe do ponownego podpięcia pod inny runtime: `VadChunker` i
-`VadAggregator` wraz z testami. Trzymają dwie rzeczy, które łatwo zrobić źle — układ wejścia
-modelu (kontekst 64 próbki + chunk 512; bez tego Silero zwraca ~0.001 na wszystko, także na
-mowę) oraz to, że wynikiem klipu jest **maksimum**, a nie średnia. Schemat bazy ma nadal
-kolumnę `vadScore`, więc powrót nie wymaga migracji.
+### Kosz „Odrzucone”
 
-### Kosz „Odrzucone”### Kosz „Odrzucone”
-
-Zdarzenia, które nie przeszły przez `minVoicedMs`, domyślnie **nie znikają** — lądują w
+Zdarzenia, które nie przeszły przez `minVoicedMs` **ani przez filtr mowy**, domyślnie nie znikają — lądują w
 zakładce „Odrzucone” razem z powodem odrzucenia i dają się odsłuchać oraz przywrócić na
 zwykłą listę. Dopóki progi nie są dostrojone, najważniejsze pytanie brzmi „czy filtr nie
 wycina mowy”, a bez nagrania nie da się na nie odpowiedzieć. Kosz ma własną, krótszą
@@ -207,7 +251,8 @@ wyłączyć w Ustawieniach.
 
 ## Czego tu nie ma (faza 3)
 
-- **Silero VAD** — patrz wyżej: zrobiony, wycofany po natywnym crashu na urządzeniu docelowym.
+- **Sieciowy VAD (Silero)** — patrz wyżej: zrobiony, wycofany po natywnym crashu na
+  urządzeniu docelowym. Jego rolę pełni dziś filtr mowy na własnej analizie widmowej.
 - **Transkrypcja (whisper.cpp)** — pole `Clip.transcript` czeka; ekran klipu ma sekcję
   „Transkrypcja” z jawną informacją, że to faza 3.
 - **Telegram** — wymaga uprawnienia `INTERNET`, które jest w manifeście **zakomentowane**.

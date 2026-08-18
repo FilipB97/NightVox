@@ -16,6 +16,14 @@ data class NightVoxSettings(
     val mergeGapMs: Long = 2_000,
     val minVoicedMs: Long = 400,
     val maxClipMs: Long = 120_000,
+    /**
+     * Filtr mowy: bramka RMS przepuszcza wszystko głośniejsze od tła, czyli nocą także
+     * oddech i chrapanie. Analiza widmowa ([pl.nightvox.audio.speech.SpeechAnalyzer])
+     * odsiewa je od mowy. Nic nie kasuje — klipy pod progiem lądują w koszu.
+     */
+    val speechFilterEnabled: Boolean = true,
+    /** Próg oceny mowy 0..1. Wyżej = mniej klipów, większe ryzyko wycięcia cichego mamrotania. */
+    val speechFilterThreshold: Float = 0.40f,
     /** Godzina auto-stopu (0..23), `null` = wyłączony. */
     val autoStopHour: Int? = 9,
     val autoStopMinute: Int = 0,
@@ -54,6 +62,7 @@ data class NightVoxSettings(
         val MERGE_GAP_RANGE_MS = 0L..5_000L
         val MIN_VOICED_RANGE_MS = 100L..2_000L
         val MAX_CLIP_RANGE_MS = 30_000L..600_000L
+        val SPEECH_THRESHOLD_RANGE = 0.15f..0.80f
         val RETENTION_RANGE_DAYS = 1..365
         val DISCARDED_RETENTION_RANGE_DAYS = 1..30
 

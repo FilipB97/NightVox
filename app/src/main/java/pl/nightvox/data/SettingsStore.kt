@@ -39,6 +39,8 @@ class SettingsStore(private val context: Context) {
             prefs[Keys.MERGE_GAP_MS] = updated.mergeGapMs
             prefs[Keys.MIN_VOICED_MS] = updated.minVoicedMs
             prefs[Keys.MAX_CLIP_MS] = updated.maxClipMs
+            prefs[Keys.SPEECH_FILTER_ENABLED] = updated.speechFilterEnabled
+            prefs[Keys.SPEECH_FILTER_THRESHOLD] = updated.speechFilterThreshold
             prefs[Keys.AUTO_STOP_ENABLED] = updated.autoStopHour != null
             prefs[Keys.AUTO_STOP_HOUR] = updated.autoStopHour ?: NightVoxSettings.DEFAULTS.autoStopHour ?: 9
             prefs[Keys.AUTO_STOP_MINUTE] = updated.autoStopMinute
@@ -67,6 +69,8 @@ class SettingsStore(private val context: Context) {
             mergeGapMs = this[Keys.MERGE_GAP_MS] ?: d.mergeGapMs,
             minVoicedMs = this[Keys.MIN_VOICED_MS] ?: d.minVoicedMs,
             maxClipMs = this[Keys.MAX_CLIP_MS] ?: d.maxClipMs,
+            speechFilterEnabled = this[Keys.SPEECH_FILTER_ENABLED] ?: d.speechFilterEnabled,
+            speechFilterThreshold = this[Keys.SPEECH_FILTER_THRESHOLD] ?: d.speechFilterThreshold,
             autoStopHour = if (autoStopEnabled) this[Keys.AUTO_STOP_HOUR] ?: d.autoStopHour else null,
             autoStopMinute = this[Keys.AUTO_STOP_MINUTE] ?: d.autoStopMinute,
             maxSessionHours = this[Keys.MAX_SESSION_HOURS] ?: d.maxSessionHours,
@@ -87,6 +91,8 @@ class SettingsStore(private val context: Context) {
         val MERGE_GAP_MS = longPreferencesKey("merge_gap_ms")
         val MIN_VOICED_MS = longPreferencesKey("min_voiced_ms")
         val MAX_CLIP_MS = longPreferencesKey("max_clip_ms")
+        val SPEECH_FILTER_ENABLED = booleanPreferencesKey("speech_filter_enabled")
+        val SPEECH_FILTER_THRESHOLD = floatPreferencesKey("speech_filter_threshold")
         val AUTO_STOP_ENABLED = booleanPreferencesKey("auto_stop_enabled")
         val AUTO_STOP_HOUR = intPreferencesKey("auto_stop_hour")
         val AUTO_STOP_MINUTE = intPreferencesKey("auto_stop_minute")

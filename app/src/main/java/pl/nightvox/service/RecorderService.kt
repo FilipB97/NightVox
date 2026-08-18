@@ -30,10 +30,13 @@ import pl.nightvox.audio.GateConfig
 import pl.nightvox.audio.GateState
 import pl.nightvox.audio.NoiseFloorTracker
 import pl.nightvox.audio.RingBuffer
+import pl.nightvox.audio.speech.SpeechAnalyzer
+import pl.nightvox.audio.speech.SpeechScore
 import pl.nightvox.data.ClipRepository
 import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.encode.ClipWriter
 import pl.nightvox.encode.FinishedClip
+import pl.nightvox.encode.HeuristicSpeechDetector
 import pl.nightvox.encode.WavDumpWriter
 import pl.nightvox.util.DiagnosticsLog
 import java.io.File
@@ -186,7 +189,11 @@ class RecorderService : Service() {
 
             val id = repository.startSession(settings, noiseFloorDb = 0f)
             sessionId = id
-            diagnostics.log("session", "start id=$id config=$config")
+            diagnostics.log(
+                "session",
+                "start id=$id config=$config filtrMowy=" +
+                    if (settings.speechFilterEnabled) "%.2f".format(settings.speechFilterThreshold) else "off",
+            )
             RecorderStateHolder.update { it.copy(sessionId = id, startedAtMs = sessionStartedAt) }
 
             acquireWakeLock()
@@ -210,6 +217,16 @@ class RecorderService : Service() {
             clipsDir = container.clipsDir,
             sampleRate = config.sampleRate,
             keepDiscarded = settings.keepDiscardedClips,
+            speechDetector = if (settings.speechFilterEnabled) {
+                HeuristicSpeechDetector(
+                    SpeechAnalyzer(
+                        sampleRate = config.sampleRate,
+                        speechThreshold = settings.speechFilterThreshold,
+                    ),
+                )
+            } else {
+                null
+            },
             callbacks = writerCallbacks(),
         )
         clipWriter = writer
@@ -331,28 +348,53 @@ class RecorderService : Service() {
     private fun writerCallbacks() = object : ClipWriter.Callbacks {
         override suspend fun onClipFinished(clip: FinishedClip) {
             val id = sessionId ?: return
-            repository.addClip(sessionId = id, file = clip.file, stats = clip.stats)
-            clipCount++
+            val speech = clip.speech
+            // Filtr mowy niczego nie kasuje: klip pod progiem ląduje w koszu, skąd da się go
+            // odsłuchać i przywrócić. Heurystyka widmowa jest zgadnięta, nie wytrenowana —
+            // twarde kasowanie byłoby tu nieuczciwe wobec danych.
+            val belowThreshold = speech != null && speech.score < settings.speechFilterThreshold
+
+            repository.addClip(
+                sessionId = id,
+                file = clip.file,
+                stats = clip.stats,
+                discardReason = if (belowThreshold) ClipRepository.DISCARD_REASON_NOT_SPEECH else null,
+                vadScore = speech?.score,
+            )
+            if (belowThreshold) discardedCount++ else clipCount++
+
             diagnostics.log(
                 "clip",
                 "zapisany ${clip.file.name} ${clip.stats.durationMs}ms " +
                     "voiced=${clip.stats.voicedMs}ms peak=${"%.1f".format(clip.stats.peakDb)} " +
-                    "segments=${clip.stats.segments}",
+                    "segments=${clip.stats.segments}" + speechSuffix(speech) +
+                    if (belowThreshold) " -> kosz (poniżej progu mowy)" else "",
             )
-            RecorderStateHolder.update { it.copy(clipCount = clipCount) }
+            RecorderStateHolder.update { it.copy(clipCount = clipCount, discardedCount = discardedCount) }
             notifications.updateRecordingNotification(RecorderStateHolder.state.value)
         }
 
-        override suspend fun onClipDiscarded(reason: DiscardReason, stats: ClipStats, file: File?) {
+        override suspend fun onClipDiscarded(
+            reason: DiscardReason,
+            stats: ClipStats,
+            file: File?,
+            speech: SpeechScore?,
+        ) {
             discardedCount++
             val sessionId = sessionId
             if (file != null && sessionId != null) {
-                repository.addClip(sessionId, file, stats, discardReason = reason.name)
+                repository.addClip(
+                    sessionId = sessionId,
+                    file = file,
+                    stats = stats,
+                    discardReason = reason.name,
+                    vadScore = speech?.score,
+                )
             }
             diagnostics.log(
                 "clip",
                 "odrzucony (${reason.name}) voiced=${stats.voicedMs}ms " +
-                    "peak=${"%.1f".format(stats.peakDb)} " +
+                    "peak=${"%.1f".format(stats.peakDb)}${speechSuffix(speech)} " +
                     if (file != null) "zachowany" else "skasowany",
             )
             RecorderStateHolder.update { it.copy(discardedCount = discardedCount) }
@@ -373,6 +415,13 @@ class RecorderService : Service() {
             stopSession(ClipRepository.END_REASON_NO_SPACE)
         }
     }
+
+    /**
+     * Cechy klipu do logu. To jest jedyne wiarygodne źródło danych do strojenia progu:
+     * po nocy widać, jaką ocenę dostały klipy, które okazały się mową, a jaką te z oddechem.
+     */
+    private fun speechSuffix(speech: SpeechScore?): String =
+        if (speech == null) "" else " " + speech.describe()
 
     private fun startMonitors(serviceScope: CoroutineScope) {
         notificationJob = serviceScope.launch {
