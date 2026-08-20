@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import pl.nightvox.AppContainer
+import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.data.SessionExporter
 import pl.nightvox.data.db.ClipEntity
 import pl.nightvox.data.db.SessionEntity
@@ -35,8 +36,19 @@ class SessionsViewModel(private val container: AppContainer) : ViewModel() {
             if (id == null) {
                 flowOf(null)
             } else {
-                combine(repository.observeSession(id), repository.clipsOfSession(id)) { session, clips ->
-                    session?.let { SessionDetail(it, clips, describeSettings(it)) }
+                combine(repository.observeSession(id), repository.allClipsOfSession(id)) { session, all ->
+                    session?.let { entity ->
+                        val settings = repository.decodeSettings(entity.settingsSnapshot)
+                        SessionDetail(
+                            session = entity,
+                            clips = all.filter { !it.isDiscarded },
+                            discarded = all.filter { it.isDiscarded },
+                            settings = describeSettings(settings),
+                            speechThreshold = settings
+                                ?.takeIf { it.speechFilterEnabled }
+                                ?.speechFilterThreshold,
+                        )
+                    }
                 }
             }
         }
@@ -54,7 +66,7 @@ class SessionsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun export(detail: SessionDetail) {
         viewModelScope.launch {
-            runCatching { exporter.export(detail.session, detail.clips) }
+            runCatching { exporter.export(detail.session, detail.clips, detail.discarded) }
                 .onSuccess { _exported.value = it }
                 .onFailure { _message.value = "Eksport nie powiódł się: ${it.message}" }
         }
@@ -76,8 +88,8 @@ class SessionsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Parametry, przy jakich powstała ta noc — bez nich porównywanie sesji nie ma sensu. */
-    private fun describeSettings(session: SessionEntity): List<Pair<String, String>> {
-        val settings = repository.decodeSettings(session.settingsSnapshot) ?: return emptyList()
+    private fun describeSettings(settings: NightVoxSettings?): List<Pair<String, String>> {
+        if (settings == null) return emptyList()
         return listOf(
             "triggerDeltaDb" to "${settings.triggerDeltaDb} dB",
             "attackFrames" to "${settings.attackFrames}",
@@ -86,12 +98,25 @@ class SessionsViewModel(private val container: AppContainer) : ViewModel() {
             "mergeGapMs" to "${settings.mergeGapMs} ms",
             "minVoicedMs" to "${settings.minVoicedMs} ms",
             "maxClipMs" to "${settings.maxClipMs} ms",
+            "filtr mowy" to if (settings.speechFilterEnabled) {
+                String.format(java.util.Locale.US, "próg %.2f", settings.speechFilterThreshold)
+            } else {
+                "wyłączony"
+            },
         )
     }
 }
 
 data class SessionDetail(
     val session: SessionEntity,
+    /** To, co przeszło przez bramkę i filtr mowy. */
     val clips: List<ClipEntity>,
+    /** To, co bramka albo filtr mowy odrzuciły — kosz tej konkretnej nocy. */
+    val discarded: List<ClipEntity>,
     val settings: List<Pair<String, String>>,
-)
+    /** Próg mowy tej nocy; `null`, gdy filtr był wtedy wyłączony. */
+    val speechThreshold: Float?,
+) {
+    /** Cała noc w kolejności zdarzeń — liczone raz, bo czyta to i oś czasu, i histogram. */
+    val allClips: List<ClipEntity> = (clips + discarded).sortedBy { it.startedAt }
+}

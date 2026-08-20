@@ -1,6 +1,5 @@
 package pl.nightvox.ui.sessions
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,8 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -81,6 +78,7 @@ private fun SessionRow(session: SessionWithStats, onClick: () -> Unit) {
                     append(session.endedAt?.let { Format.shortTime(it) } ?: "trwa")
                     session.endedAt?.let { append("  ·  ${Format.duration(it - session.startedAt)}") }
                     append("  ·  tło ${Format.db(session.noiseFloorDb)}")
+                    if (session.discardedCount > 0) append("  ·  ${session.discardedCount} odrzuconych")
                     if (session.interruptions > 0) append("  ·  ${session.interruptions} przerwań")
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -95,41 +93,5 @@ private fun SessionRow(session: SessionWithStats, onClick: () -> Unit) {
                 )
             }
         }
-    }
-}
-
-/**
- * Mini-oś czasu nocy: każdy klip to kreska w miejscu, w którym padł.
- * Od jednego spojrzenia widać, czy gadanie skupia się nad ranem, czy leci całą noc.
- */
-@Composable
-fun SessionTimeline(
-    startedAt: Long,
-    endedAt: Long,
-    clipTimes: List<Long>,
-    modifier: Modifier = Modifier,
-) {
-    val trackColor = MaterialTheme.colorScheme.surfaceVariant
-    val markColor = MaterialTheme.colorScheme.primary
-    val span = (endedAt - startedAt).coerceAtLeast(1)
-
-    Canvas(modifier.fillMaxWidth().height(48.dp)) {
-        drawRect(color = trackColor, size = size)
-        for (time in clipTimes) {
-            val fraction = ((time - startedAt).toFloat() / span).coerceIn(0f, 1f)
-            val x = fraction * size.width
-            drawLine(
-                color = markColor,
-                start = Offset(x, size.height * 0.15f),
-                end = Offset(x, size.height * 0.85f),
-                strokeWidth = 3f,
-            )
-        }
-        drawLine(
-            color = Color.White.copy(alpha = 0.12f),
-            start = Offset(0f, size.height / 2),
-            end = Offset(size.width, size.height / 2),
-            strokeWidth = 1f,
-        )
     }
 }

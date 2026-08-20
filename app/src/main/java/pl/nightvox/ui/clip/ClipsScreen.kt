@@ -47,6 +47,7 @@ fun ClipsScreen(
 ) {
     val clips by viewModel.clips.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val sort by viewModel.sort.collectAsStateWithLifecycle()
     val discardedCount by viewModel.discardedCount.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -94,13 +95,32 @@ fun ClipsScreen(
                     label = { Text(if (discardedCount > 0) "Odrzucone ($discardedCount)" else "Odrzucone") },
                 )
             }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Kolejność",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FilterChip(
+                    selected = sort == ClipSort.NEWEST,
+                    onClick = { viewModel.setSort(ClipSort.NEWEST) },
+                    label = { Text("Od najnowszych") },
+                )
+                FilterChip(
+                    selected = sort == ClipSort.SCORE,
+                    onClick = { viewModel.setSort(ClipSort.SCORE) },
+                    label = { Text("Wg oceny mowy") },
+                )
+            }
             Spacer(Modifier.height(4.dp))
         }
 
         if (filter == ClipFilter.DISCARDED) {
             Text(
-                "Zdarzenia, których bramka nie uznała za mowę. Przejrzyj je przy strojeniu progów — " +
-                    "jeśli którekolwiek jest wypowiedzią, próg albo minVoicedMs jest za wysoki.",
+                "Zdarzenia, których bramka albo filtr mowy nie uznały za mowę. Ustaw kolejność wg oceny — " +
+                    "na górze wylądują te, przy których filtr był najbliżej pomyłki. Jeśli któreś jest " +
+                    "wypowiedzią, obniż próg mowy albo minVoicedMs i przywróć klip.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -111,23 +131,41 @@ fun ClipsScreen(
             EmptyState(
                 when (filter) {
                     ClipFilter.FAVORITES -> "Żaden klip nie jest jeszcze oznaczony jako ulubiony."
-                    ClipFilter.DISCARDED -> "Kosz jest pusty — bramka niczego nie odrzuciła."
+                    ClipFilter.DISCARDED -> "Kosz jest pusty — ani bramka, ani filtr mowy niczego nie odrzuciły."
                     ClipFilter.ALL -> "Brak klipów. Uruchom sesję i prześpij z nią noc."
                 },
             )
         } else {
             // Grupowanie po nocach: przy trzydziestu klipach na noc płaska lista przestaje
-            // cokolwiek mówić o tym, kiedy się mówiło.
-            val nights = remember(clips) { clips.groupBy { Format.date(it.clip.startedAt) } }
+            // cokolwiek mówić o tym, kiedy się mówiło. Przy sortowaniu wg oceny nagłówki nocy
+            // byłyby kłamstwem — kolejność nie ma wtedy nic wspólnego z czasem.
+            val nights = remember(clips, sort) {
+                if (sort == ClipSort.NEWEST) clips.groupBy { Format.date(it.clip.startedAt) } else null
+            }
             LazyColumn(Modifier.padding(horizontal = 20.dp)) {
-                nights.forEach { (night, items) ->
-                    item(key = "header-$night") {
-                        NightHeader(night = night, count = items.size)
+                if (nights != null) {
+                    nights.forEach { (night, items) ->
+                        item(key = "header-$night") {
+                            NightHeader(night = night, count = items.size)
+                        }
+                        items(items, key = { it.clip.id }) { item ->
+                            ClipListRow(
+                                item = item,
+                                showRestore = filter == ClipFilter.DISCARDED,
+                                showDate = false,
+                                onClick = { onOpenClip(item.clip.id) },
+                                onPlay = { viewModel.playPause(item.clip) },
+                                onToggleFavorite = { viewModel.toggleFavorite(item.clip) },
+                                onRestore = { viewModel.restore(item.clip) },
+                            )
+                        }
                     }
-                    items(items, key = { it.clip.id }) { item ->
+                } else {
+                    items(clips, key = { it.clip.id }) { item ->
                         ClipListRow(
                             item = item,
                             showRestore = filter == ClipFilter.DISCARDED,
+                            showDate = true,
                             onClick = { onOpenClip(item.clip.id) },
                             onPlay = { viewModel.playPause(item.clip) },
                             onToggleFavorite = { viewModel.toggleFavorite(item.clip) },
@@ -168,6 +206,8 @@ private fun NightHeader(night: String, count: Int) {
 private fun ClipListRow(
     item: ClipListItem,
     showRestore: Boolean,
+    /** Przy sortowaniu wg oceny nie ma nagłówków nocy, więc data musi być w wierszu. */
+    showDate: Boolean,
     onClick: () -> Unit,
     onPlay: () -> Unit,
     onToggleFavorite: () -> Unit,
@@ -184,15 +224,20 @@ private fun ClipListRow(
             Icon(Icons.Filled.PlayArrow, contentDescription = "Odtwórz")
         }
         Column(Modifier.weight(1f).padding(start = 4.dp)) {
-            Text(Format.time(item.clip.startedAt), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                if (showDate) {
+                    "${Format.time(item.clip.startedAt)}  ·  ${Format.date(item.clip.startedAt)}"
+                } else {
+                    Format.time(item.clip.startedAt)
+                },
+                style = MaterialTheme.typography.bodyLarge,
+            )
             Text(
                 buildString {
                     append(Format.clipDuration(item.clip.durationMs))
                     append(" · szczyt ${Format.db(item.clip.peakDb)}")
                     append(" · nad progiem ${item.clip.voicedMs} ms")
-                    item.clip.vadScore?.let {
-                        append(" · mowa ${String.format(java.util.Locale.US, "%.2f", it)}")
-                    }
+                    item.clip.vadScore?.let { append(" · mowa ${Format.score(it)}") }
                     if (item.sizeBytes > 0) append(" · ${Format.bytes(item.sizeBytes)}")
                 },
                 style = MaterialTheme.typography.bodySmall,

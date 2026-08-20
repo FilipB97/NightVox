@@ -68,4 +68,6 @@ data class SessionWithStats(
     val clipCount: Int,
     val totalVoicedMs: Long,
     val totalDurationMs: Long,
+    /** Ile zdarzeń tej nocy odrzuciła bramka albo filtr mowy. */
+    val discardedCount: Int,
 )

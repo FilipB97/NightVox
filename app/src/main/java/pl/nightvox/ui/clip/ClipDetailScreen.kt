@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.IosShare
@@ -57,10 +59,12 @@ fun ClipDetailScreen(
     clipId: String,
     viewModel: ClipsViewModel,
     onBack: () -> Unit,
+    onOpenClip: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val detail by viewModel.selected.collectAsStateWithLifecycle()
     val playback by viewModel.player.state.collectAsStateWithLifecycle()
+    val neighbours by viewModel.neighbours.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
 
     LaunchedEffect(clipId) { viewModel.select(clipId) }
@@ -141,12 +145,12 @@ fun ClipDetailScreen(
                             "nie osiągnął minVoicedMs. Jeśli to jednak wypowiedź — obniż minVoicedMs " +
                             "albo próg i przywróć klip."
                         "NOT_SPEECH" -> "Bramka przepuściła, ale analiza widmowa nie znalazła tu struktury " +
-                            "mowy — ocena ${current.clip.vadScore?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "—"}. " +
+                            "mowy — ocena ${current.clip.vadScore?.let { Format.score(it) } ?: "—"}. " +
                             "Tak wygląda oddech (szum szerokopasmowy bez okresowości) i chrapanie " +
                             "(buczenie poniżej 90 Hz). Odsłuchaj: jeśli to jednak wypowiedź, obniż próg mowy " +
                             "w ustawieniach i przywróć klip."
                         "LOW_VAD" -> "Bramka przepuściła, ale Silero VAD nie uznał tego za mowę " +
-                            "(${current.clip.vadScore?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "—"}). " +
+                            "(${current.clip.vadScore?.let { Format.score(it) } ?: "—"}). " +
                             "Wpis z wcześniejszej wersji aplikacji."
                         else -> "Powód: ${current.clip.discardReason ?: "nieznany"}"
                     },
@@ -207,6 +211,39 @@ fun ClipDetailScreen(
                 }
             }
 
+            // Klip otwarty z ekranu sesji może nie być w bieżącej liście „Klipy" (np. odrzucony
+            // przy filtrze „Wszystkie"). Wtedy nie ma czego numerować i pasek się nie pokazuje.
+            neighbours?.takeIf { it.position > 0 && it.total > 1 }?.let { position ->
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = { position.previousId?.let(onOpenClip) },
+                        enabled = position.previousId != null,
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Poprzedni")
+                    }
+                    Text(
+                        if (position.position > 0) "${position.position} / ${position.total}" else "—",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(
+                        onClick = { position.nextId?.let(onOpenClip) },
+                        enabled = position.nextId != null,
+                    ) {
+                        Text("Następny")
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                    }
+                }
+            }
+
             SectionHeader("Parametry klipu")
             Row(
                 Modifier.fillMaxWidth(),
@@ -217,7 +254,7 @@ fun ClipDetailScreen(
                 StatTile("szczyt", Format.db(current.clip.peakDb))
                 StatTile(
                     "mowa",
-                    current.clip.vadScore?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "—",
+                    current.clip.vadScore?.let { Format.score(it) } ?: "—",
                 )
             }
 

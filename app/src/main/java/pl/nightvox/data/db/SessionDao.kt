@@ -29,7 +29,9 @@ interface SessionDao {
                s.endReason AS endReason,
                COUNT(c.id) AS clipCount,
                COALESCE(SUM(c.voicedMs), 0) AS totalVoicedMs,
-               COALESCE(SUM(c.durationMs), 0) AS totalDurationMs
+               COALESCE(SUM(c.durationMs), 0) AS totalDurationMs,
+               (SELECT COUNT(*) FROM clips d WHERE d.sessionId = s.id AND d.isDiscarded = 1)
+                   AS discardedCount
         FROM sessions s LEFT JOIN clips c ON c.sessionId = s.id AND c.isDiscarded = 0
         GROUP BY s.id
         ORDER BY s.startedAt DESC

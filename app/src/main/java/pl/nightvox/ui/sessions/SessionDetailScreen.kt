@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -20,6 +21,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +59,7 @@ fun SessionDetailScreen(
     val detail by viewModel.selected.collectAsStateWithLifecycle()
     val exported by viewModel.exported.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
+    var clipFilter by remember { mutableStateOf(SessionClipFilter.KEPT) }
 
     LaunchedEffect(sessionId) { viewModel.load(sessionId) }
 
@@ -95,6 +98,8 @@ fun SessionDetailScreen(
             return@Scaffold
         }
 
+        val histogram = remember(current) { NightStats.histogram(current.allClips) }
+
         LazyColumn(
             Modifier
                 .fillMaxSize()
@@ -107,25 +112,49 @@ fun SessionDetailScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 ) {
                     Column(Modifier.padding(16.dp)) {
+                        val endedAt = current.session.endedAt ?: System.currentTimeMillis()
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             StatTile("klipy", current.clips.size.toString())
-                            StatTile(
-                                "długość",
-                                current.session.endedAt?.let {
-                                    Format.duration(it - current.session.startedAt)
-                                } ?: "trwa",
-                            )
+                            StatTile("odrzucone", current.discarded.size.toString())
+                            StatTile("długość", Format.duration(endedAt - current.session.startedAt))
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
                             StatTile("tło", Format.db(current.session.noiseFloorDb))
                             StatTile("przerwania", current.session.interruptions.toString())
+                            StatTile(
+                                "najdłuższa cisza",
+                                Format.duration(
+                                    NightStats.longestQuietGapMs(
+                                        current.allClips,
+                                        current.session.startedAt,
+                                        endedAt,
+                                    ),
+                                ),
+                            )
                         }
                         Spacer(Modifier.height(16.dp))
                         SessionTimeline(
                             startedAt = current.session.startedAt,
-                            endedAt = current.session.endedAt ?: System.currentTimeMillis(),
-                            clipTimes = current.clips.map { it.startedAt },
+                            endedAt = endedAt,
+                            marks = remember(current) {
+                                current.allClips.map {
+                                    TimelineMark(it.startedAt, it.vadScore, it.isDiscarded)
+                                }
+                            },
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Wysokość kreski to ocena mowy; przygaszone to odrzucone. " +
+                                "Pionowe linie co godzinę.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(8.dp))
                         Row(
@@ -155,12 +184,68 @@ fun SessionDetailScreen(
                 }
             }
 
-            item { SectionHeader("Klipy (${current.clips.size})") }
+            if (histogram.isNotEmpty()) {
+                item { SectionHeader("Rozkład ocen mowy") }
+                item {
+                    Column {
+                        ScoreHistogramView(buckets = histogram, threshold = current.speechThreshold)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Dwa skupiska po obu stronach progu znaczą, że filtr widzi dwie różne " +
+                                "rzeczy i próg wystarczy przesunąć. Jedna mgła wokół progu znaczy, " +
+                                "że sam próg tego nie naprawi." +
+                                (
+                                    NightStats.medianScore(current.allClips)
+                                        ?.let { " Mediana tej nocy: ${Format.score(it)}." } ?: ""
+                                    ) +
+                                " Eksport (ikona u góry) zawiera klipy.csv z ocenami wszystkich " +
+                                "zdarzeń tej nocy, razem z odrzuconymi.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
 
-            if (current.clips.isEmpty()) {
-                item { EmptyState("Cicha noc — żadne zdarzenie nie przekroczyło progu.") }
+            item {
+                SectionHeader("Zdarzenia (${current.allClips.size})")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = clipFilter == SessionClipFilter.KEPT,
+                        onClick = { clipFilter = SessionClipFilter.KEPT },
+                        label = { Text("Zapisane (${current.clips.size})") },
+                    )
+                    FilterChip(
+                        selected = clipFilter == SessionClipFilter.DISCARDED,
+                        onClick = { clipFilter = SessionClipFilter.DISCARDED },
+                        label = { Text("Odrzucone (${current.discarded.size})") },
+                    )
+                    FilterChip(
+                        selected = clipFilter == SessionClipFilter.ALL,
+                        onClick = { clipFilter = SessionClipFilter.ALL },
+                        label = { Text("Wszystkie") },
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+
+            val shown = when (clipFilter) {
+                SessionClipFilter.KEPT -> current.clips
+                SessionClipFilter.DISCARDED -> current.discarded
+                SessionClipFilter.ALL -> current.allClips
+            }
+            if (shown.isEmpty()) {
+                item {
+                    EmptyState(
+                        when (clipFilter) {
+                            SessionClipFilter.KEPT -> "Cicha noc — nic nie przeszło przez filtr."
+                            SessionClipFilter.DISCARDED -> "Tej nocy filtr niczego nie odrzucił."
+                            SessionClipFilter.ALL -> "Cicha noc — żadne zdarzenie nie przekroczyło progu."
+                        },
+                    )
+                }
             } else {
-                items(current.clips, key = { it.id }) { clip ->
+                items(shown, key = { it.id }) { clip ->
                     ClipRow(clip = clip, onClick = { onOpenClip(clip.id) })
                 }
             }
@@ -220,9 +305,24 @@ private fun ClipRow(clip: ClipEntity, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column {
-            Text(Format.time(clip.startedAt), style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(Format.time(clip.startedAt), style = MaterialTheme.typography.bodyLarge)
+                if (clip.isDiscarded) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "odrzucony",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Text(
-                "${Format.clipDuration(clip.durationMs)} · mowa ${clip.voicedMs} ms · szczyt ${Format.db(clip.peakDb)}",
+                buildString {
+                    append(Format.clipDuration(clip.durationMs))
+                    append(" · nad progiem ${clip.voicedMs} ms")
+                    append(" · szczyt ${Format.db(clip.peakDb)}")
+                    clip.vadScore?.let { append(" · mowa ${Format.score(it)}") }
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -236,6 +336,9 @@ private fun ClipRow(clip: ClipEntity, onClick: () -> Unit) {
         }
     }
 }
+
+/** Co pokazać na liście zdarzeń nocy. */
+private enum class SessionClipFilter { KEPT, DISCARDED, ALL }
 
 private fun endReasonLabel(reason: String): String = when (reason) {
     "user" -> "ręcznie"
