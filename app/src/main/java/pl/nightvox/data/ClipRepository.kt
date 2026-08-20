@@ -34,6 +34,10 @@ class ClipRepository(
 
     fun clipsOfSession(sessionId: String): Flow<List<ClipEntity>> = clipDao.observeBySession(sessionId)
 
+    /** Cała noc — razem z tym, co filtr odrzucił. */
+    fun allClipsOfSession(sessionId: String): Flow<List<ClipEntity>> =
+        clipDao.observeBySessionIncludingDiscarded(sessionId)
+
     fun observeClip(id: String): Flow<ClipEntity?> = clipDao.observeById(id)
 
     fun observeSession(id: String): Flow<SessionEntity?> = sessionDao.observeById(id)

@@ -56,4 +56,7 @@ object Format {
         value >= 1024 -> String.format(Locale.getDefault(), "%.0f kB", value / 1024f)
         else -> "$value B"
     }
+
+    /** Ocena mowy 0..1 — wszędzie tak samo, żeby dało się porównywać wzrokiem. */
+    fun score(value: Float): String = String.format(Locale.US, "%.2f", value)
 }

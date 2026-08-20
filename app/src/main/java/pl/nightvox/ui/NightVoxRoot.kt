@@ -194,6 +194,13 @@ fun NightVoxRoot() {
                     clipId = clipId,
                     viewModel = vm,
                     onBack = { navController.popBackStack() },
+                    // Podmiana, nie dokładanie: przy przeglądaniu stu klipów „wstecz" ma wracać
+                    // do listy, a nie odtwarzać całą trasę klip po klipie.
+                    onOpenClip = { next ->
+                        navController.navigate(Routes.clipDetail(next)) {
+                            popUpTo(Routes.CLIP_DETAIL) { inclusive = true }
+                        }
+                    },
                 )
             }
         }

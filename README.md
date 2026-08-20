@@ -116,6 +116,8 @@ z planu:
 | `ton ponizej 90 hz jest karany a nie nagradzany` | okresowość sama w sobie nie jest dowodem mowy |
 | `szept traci czesc oceny ale nie wszystko` | brak tonu krtaniowego nie zeruje oceny |
 | `sinus daje szczyt w swoim prazku` / `energia widma…` | FFT: poprawność i skala (Parseval) |
+| `histogram rozdziela zapisane od odrzuconych` | statystyki nocy, łącznie z oceną 1,0 na krańcu |
+| `przecinek w nazwie pliku jest cytowany` | eksport CSV nie rozjeżdża się na dziwnej nazwie |
 
 Testy instrumentacyjne (`app/src/androidTest`) wymagają urządzenia lub emulatora i
 pokrywają integralność `.m4a` (`MediaExtractor` odczytuje zadeklarowaną długość), Room,
@@ -246,6 +248,26 @@ zwykłą listę. Dopóki progi nie są dostrojone, najważniejsze pytanie brzmi 
 wycina mowy”, a bez nagrania nie da się na nie odpowiedzieć. Kosz ma własną, krótszą
 retencję (domyślnie 7 dni), bo służy do strojenia, a nie do archiwizacji; da się go też
 wyłączyć w Ustawieniach.
+
+### Przegląd nocy
+
+Sto zdarzeń na noc to za dużo, żeby przesłuchiwać je po kolei, więc przegląd jest zbudowany
+wokół pytania „na co warto spojrzeć”:
+
+- **Oś czasu sesji** — kreska na każde zdarzenie, wysokość to ocena mowy, przygaszone to
+  odrzucone, pionowe linie co pełną godzinę. Od jednego spojrzenia widać, czy coś odstaje.
+- **Rozkład ocen** — histogram z zaznaczonym progiem tej nocy. Dwa skupiska po obu stronach
+  progu znaczą, że filtr widzi dwie różne rzeczy i wystarczy przesunąć próg. Jedna mgła wokół
+  progu znaczy, że progiem się tego nie naprawi i trzeba poprawiać same cechy.
+- **Sortowanie wg oceny** na liście klipów. W koszu wypycha na górę te odrzucone, przy których
+  filtr był najbliżej pomyłki — czyli dokładnie te, które warto sprawdzić.
+- **„Poprzedni / następny”** w szczegółach klipu, z licznikiem `12 / 102`. Przeglądanie nie
+  wymaga wracania do listy po każdym odsłuchaniu, a „wstecz” nadal wraca do listy, nie odtwarza
+  całej trasy.
+- **Eksport nocy** do ZIP-a zawiera `klipy.csv` z ocenami i cechami wszystkich zdarzeń
+  (razem z odrzuconymi), `podsumowanie.txt` z parametrami tej nocy oraz same pliki audio
+  w katalogach `klipy/` i `odrzucone/`. Czas w CSV jest w formacie `yyyy-MM-dd HH:mm:ss`,
+  liczby z kropką dziesiętną — plik ma się otworzyć w arkuszu i dać posortować po ocenie.
 
 ---
 

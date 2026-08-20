@@ -31,6 +31,10 @@ interface ClipDao {
     @Query("SELECT * FROM clips WHERE sessionId = :sessionId AND isDiscarded = 0 ORDER BY startedAt ASC")
     fun observeBySession(sessionId: String): Flow<List<ClipEntity>>
 
+    /** Cała noc, razem z odrzuconymi — przegląd sesji ma pokazywać też to, co filtr wyciął. */
+    @Query("SELECT * FROM clips WHERE sessionId = :sessionId ORDER BY startedAt ASC")
+    fun observeBySessionIncludingDiscarded(sessionId: String): Flow<List<ClipEntity>>
+
     @Query("SELECT * FROM clips WHERE sessionId = :sessionId ORDER BY startedAt ASC")
     suspend fun bySession(sessionId: String): List<ClipEntity>
 

@@ -21,6 +21,23 @@ import java.io.File
 
 enum class ClipFilter { ALL, FAVORITES, DISCARDED }
 
+/**
+ * Kolejność listy. [SCORE] jest tu po to, żeby przegląd nocy nie polegał na przesłuchaniu
+ * stu klipów po kolei: przy „Wszystkie” wypycha na górę to, co najbardziej przypomina mowę,
+ * a w koszu — to, co filtr odrzucił najmniej pewnie, czyli dokładnie te klipy, przy których
+ * może się mylić.
+ */
+enum class ClipSort { NEWEST, SCORE }
+
+/** Sąsiedzi klipu w bieżącej liście — do przechodzenia „dalej” bez wracania do listy. */
+data class ClipNeighbours(
+    val previousId: String?,
+    val nextId: String?,
+    /** Pozycja licząc od 1; 0, gdy klipu nie ma w bieżącej liście. */
+    val position: Int,
+    val total: Int,
+)
+
 data class ClipListItem(
     val clip: ClipEntity,
     val fileExists: Boolean,
@@ -48,16 +65,19 @@ class ClipsViewModel(private val container: AppContainer) : ViewModel() {
     private val _filter = MutableStateFlow(ClipFilter.ALL)
     val filter: StateFlow<ClipFilter> = _filter.asStateFlow()
 
+    private val _sort = MutableStateFlow(ClipSort.NEWEST)
+    val sort: StateFlow<ClipSort> = _sort.asStateFlow()
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    val clips: StateFlow<List<ClipListItem>> = _filter
-        .flatMapLatest { filter ->
+    val clips: StateFlow<List<ClipListItem>> = combine(_filter, _sort) { filter, sort -> filter to sort }
+        .flatMapLatest { (filter, sort) ->
             val source = when (filter) {
                 ClipFilter.ALL -> repository.clips
                 ClipFilter.FAVORITES -> repository.favorites
                 ClipFilter.DISCARDED -> repository.discarded
             }
             source.map { list ->
-                list.map { clip ->
+                list.sortedWith(comparatorFor(sort)).map { clip ->
                     val file = File(clip.filePath)
                     ClipListItem(clip, file.isFile, file.length())
                 }
@@ -83,6 +103,22 @@ class ClipsViewModel(private val container: AppContainer) : ViewModel() {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Gdzie jesteśmy w bieżącej liście — żeby ze szczegółów klipu iść dalej, a nie wstecz. */
+    val neighbours: StateFlow<ClipNeighbours?> = combine(clips, selectedId) { list, id ->
+        if (id == null) return@combine null
+        val index = list.indexOfFirst { it.clip.id == id }
+        if (index < 0) {
+            ClipNeighbours(null, null, 0, list.size)
+        } else {
+            ClipNeighbours(
+                previousId = list.getOrNull(index - 1)?.clip?.id,
+                nextId = list.getOrNull(index + 1)?.clip?.id,
+                position = index + 1,
+                total = list.size,
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
@@ -103,6 +139,17 @@ class ClipsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setFilter(filter: ClipFilter) {
         _filter.value = filter
+    }
+
+    fun setSort(sort: ClipSort) {
+        _sort.value = sort
+    }
+
+    /** Klipy bez oceny (nagrane przed filtrem mowy) idą na koniec, nie na początek. */
+    private fun comparatorFor(sort: ClipSort): Comparator<ClipEntity> = when (sort) {
+        ClipSort.NEWEST -> compareByDescending { it.startedAt }
+        ClipSort.SCORE -> compareByDescending<ClipEntity> { it.vadScore ?: -1f }
+            .thenByDescending { it.startedAt }
     }
 
     /** Odrzucony klip okazał się mową — wraca na zwykłą listę. */
