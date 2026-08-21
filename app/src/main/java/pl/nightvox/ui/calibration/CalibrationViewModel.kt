@@ -13,8 +13,11 @@ import pl.nightvox.NightVoxApp
 import pl.nightvox.audio.AudioCapture
 import pl.nightvox.audio.Frame
 import pl.nightvox.audio.GateConfig
+import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.audio.LevelMeter
+import pl.nightvox.audio.speech.SpeechAnalyzer
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 enum class CalibrationPhase {
     IDLE,
@@ -42,9 +45,13 @@ data class CalibrationState(
     val speechMeanDb: Float = LevelMeter.MIN_DBFS,
     val wouldTrigger: Boolean = false,
     val longestRunFrames: Int = 0,
+    /** Ocena z filtru mowy dla nagranej wypowiedzi; `null`, gdy testu jeszcze nie było. */
+    val speechScore: Float? = null,
+    /** Proponowana bezwzględna podłoga progu, wyliczona z poziomu zmierzonego głosu. */
+    val suggestedMinTriggerDb: Float = NightVoxSettings.DEFAULTS.minTriggerDb,
     val error: String? = null,
 ) {
-    val thresholdDb: Float get() = measuredFloorDb + suggestedDeltaDb
+    val thresholdDb: Float get() = maxOf(measuredFloorDb + suggestedDeltaDb, suggestedMinTriggerDb)
 }
 
 /**
@@ -83,8 +90,17 @@ class CalibrationViewModel(private val app: NightVoxApp) : ViewModel() {
     fun startVerification() {
         val current = _state.value
         if (current.phase != CalibrationPhase.FLOOR_READY && current.phase != CalibrationPhase.VERIFIED) return
-        run(CalibrationPhase.VERIFYING, SPEECH_DURATION_MS) { levels ->
-            val threshold = current.measuredFloorDb + current.suggestedDeltaDb
+        val threshold = current.measuredFloorDb + current.suggestedDeltaDb
+        // Ten sam analizator, którego użyje nagrywanie — po to, żeby liczba na ekranie
+        // znaczyła dokładnie to samo co ocena przy klipach.
+        val analyzer = SpeechAnalyzer()
+        analyzer.reset(threshold)
+
+        run(
+            phase = CalibrationPhase.VERIFYING,
+            durationMs = SPEECH_DURATION_MS,
+            onFrame = { frame -> analyzer.feed(frame.samples) },
+        ) { levels ->
             var run = 0
             var longest = 0
             for (level in levels) {
@@ -95,16 +111,35 @@ class CalibrationViewModel(private val app: NightVoxApp) : ViewModel() {
                     run = 0
                 }
             }
+            val peak = levels.maxOrNull() ?: LevelMeter.MIN_DBFS
             _state.value = _state.value.copy(
                 phase = CalibrationPhase.VERIFIED,
                 remainingMs = 0,
-                speechPeakDb = levels.maxOrNull() ?: LevelMeter.MIN_DBFS,
+                speechPeakDb = peak,
                 speechMeanDb = if (levels.isEmpty()) LevelMeter.MIN_DBFS else levels.average().toFloat(),
                 longestRunFrames = longest,
                 wouldTrigger = longest >= DEFAULT_ATTACK_FRAMES,
+                speechScore = analyzer.finish()?.score,
+                suggestedMinTriggerDb = suggestMinTrigger(peak),
             )
         }
     }
+
+    /**
+     * Podłoga progu wyliczona z poziomu zmierzonego głosu, a nie zgadnięta.
+     *
+     * Margines [MIN_TRIGGER_MARGIN_DB] pod szczytem cichej wypowiedzi zostawia zapas na to,
+     * że przez sen mówi się ciszej i z innej pozycji niż podczas kalibracji, a jednocześnie
+     * odcina zdarzenia, które są od głosu o rząd wielkości cichsze.
+     */
+    private fun suggestMinTrigger(speechPeakDb: Float): Float =
+        (speechPeakDb - MIN_TRIGGER_MARGIN_DB)
+            .roundToInt()
+            .toFloat()
+            .coerceIn(
+                NightVoxSettings.MIN_TRIGGER_RANGE_DB.start,
+                NightVoxSettings.MIN_TRIGGER_RANGE_DB.endInclusive,
+            )
 
     fun adjustSuggestion(deltaDb: Float) {
         _state.value = _state.value.copy(
@@ -112,13 +147,29 @@ class CalibrationViewModel(private val app: NightVoxApp) : ViewModel() {
         )
     }
 
+    fun adjustMinTrigger(db: Float) {
+        _state.value = _state.value.copy(
+            suggestedMinTriggerDb = db.coerceIn(
+                NightVoxSettings.MIN_TRIGGER_RANGE_DB.start,
+                NightVoxSettings.MIN_TRIGGER_RANGE_DB.endInclusive,
+            ),
+        )
+    }
+
     fun applySuggestion(onApplied: () -> Unit) {
-        val delta = _state.value.suggestedDeltaDb
+        val current = _state.value
         viewModelScope.launch {
-            app.container.settingsStore.update { it.copy(triggerDeltaDb = delta) }
+            app.container.settingsStore.update {
+                it.copy(
+                    triggerDeltaDb = current.suggestedDeltaDb,
+                    minTriggerDb = current.suggestedMinTriggerDb,
+                )
+            }
             app.container.diagnostics.log(
                 "calibration",
-                "zastosowano triggerDeltaDb=$delta przy tle ${_state.value.measuredFloorDb}",
+                "zastosowano triggerDeltaDb=${current.suggestedDeltaDb} " +
+                    "minTriggerDb=${current.suggestedMinTriggerDb} przy tle ${current.measuredFloorDb}" +
+                    (current.speechScore?.let { " ocena mowy=%.2f".format(it) } ?: ""),
             )
             onApplied()
         }
@@ -136,7 +187,12 @@ class CalibrationViewModel(private val app: NightVoxApp) : ViewModel() {
         super.onCleared()
     }
 
-    private fun run(phase: CalibrationPhase, durationMs: Long, onDone: (List<Float>) -> Unit) {
+    private fun run(
+        phase: CalibrationPhase,
+        durationMs: Long,
+        onFrame: ((Frame) -> Unit)? = null,
+        onDone: (List<Float>) -> Unit,
+    ) {
         job?.cancel()
         stopCapture()
         _state.value = _state.value.copy(phase = phase, remainingMs = durationMs, error = null)
@@ -175,6 +231,7 @@ class CalibrationViewModel(private val app: NightVoxApp) : ViewModel() {
                 val elapsed = System.currentTimeMillis() - startedAt
                 if (elapsed >= durationMs) break
                 val frame = frames.receiveCatching().getOrNull() ?: break
+                onFrame?.invoke(frame)
                 val db = LevelMeter.rmsDbfs(frame.samples)
                 levels.add(db)
                 _state.value = _state.value.copy(
@@ -224,5 +281,8 @@ class CalibrationViewModel(private val app: NightVoxApp) : ViewModel() {
         private const val SUGGESTED_MIN_DB = 6f
         private const val SUGGESTED_MAX_DB = 24f
         private const val DEFAULT_ATTACK_FRAMES = 3
+
+        /** O ile pod szczytem zmierzonego głosu ustawiamy bezwzględną podłogę progu. */
+        private const val MIN_TRIGGER_MARGIN_DB = 10f
     }
 }

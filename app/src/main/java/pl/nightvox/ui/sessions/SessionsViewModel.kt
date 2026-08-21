@@ -92,6 +92,7 @@ class SessionsViewModel(private val container: AppContainer) : ViewModel() {
         if (settings == null) return emptyList()
         return listOf(
             "triggerDeltaDb" to "${settings.triggerDeltaDb} dB",
+            "minTriggerDb" to "${settings.minTriggerDb} dBFS",
             "attackFrames" to "${settings.attackFrames}",
             "preRollMs" to "${settings.preRollMs} ms",
             "hangoverMs" to "${settings.hangoverMs} ms",

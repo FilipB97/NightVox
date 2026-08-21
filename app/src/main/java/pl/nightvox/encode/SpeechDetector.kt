@@ -11,7 +11,8 @@ import pl.nightvox.audio.speech.SpeechScore
  * i żeby ewentualna awaria detektora oznaczała brak oceny, a nie brak nagrania.
  */
 interface SpeechDetector : AutoCloseable {
-    fun start()
+    /** [levelFloorDb] to próg wyzwolenia klipu — poniżej niego nie ma czego analizować. */
+    fun start(levelFloorDb: Float)
     fun feed(samples: ShortArray, count: Int = samples.size)
     fun finish(): SpeechScore?
     override fun close() = Unit
@@ -22,7 +23,7 @@ class HeuristicSpeechDetector(
     private val analyzer: SpeechAnalyzer,
 ) : SpeechDetector {
 
-    override fun start() = analyzer.reset()
+    override fun start(levelFloorDb: Float) = analyzer.reset(levelFloorDb)
 
     override fun feed(samples: ShortArray, count: Int) = analyzer.feed(samples, count)
 

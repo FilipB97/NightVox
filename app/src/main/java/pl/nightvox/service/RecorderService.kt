@@ -506,7 +506,8 @@ class RecorderService : Service() {
             diagnostics.log(
                 "session",
                 "koniec ($reason) klipy=$clipCount odrzucone=$discardedCount " +
-                    "przerwania=$interruptions zgubione_ramki=${droppedFrames.get()}",
+                    "przerwania=$interruptions zgubione_ramki=${droppedFrames.get()} " +
+                    "ucięte_podłogą=${gate?.eventsBlockedByFloor ?: 0}",
             )
         }
 

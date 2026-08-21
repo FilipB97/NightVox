@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.ParameterSlider
@@ -153,8 +154,21 @@ fun CalibrationScreen(
                     range = 6f..24f,
                     steps = 17,
                     onValueChange = { viewModel.adjustSuggestion(it) },
-                    description = "Próg wyzwolenia = tło ${Format.db(state.measuredFloorDb)} + " +
-                        "${state.suggestedDeltaDb.toInt()} dB = ${Format.db(state.thresholdDb)}",
+                    description = "Próg względny: tło ${Format.db(state.measuredFloorDb)} + " +
+                        "${state.suggestedDeltaDb.toInt()} dB = " +
+                        Format.db(state.measuredFloorDb + state.suggestedDeltaDb),
+                )
+                ParameterSlider(
+                    label = "Podłoga progu (minTriggerDb)",
+                    valueText = Format.db(state.suggestedMinTriggerDb),
+                    value = state.suggestedMinTriggerDb,
+                    range = NightVoxSettings.MIN_TRIGGER_RANGE_DB,
+                    steps = 39,
+                    onValueChange = { viewModel.adjustMinTrigger(it) },
+                    description = "Próg nigdy nie zejdzie poniżej tej wartości, choćby pokój był " +
+                        "bardzo cichy. Wyliczona z Twojego głosu: 10 dB pod szczytem " +
+                        "${Format.db(state.speechPeakDb)}. Realny próg tej nocy: " +
+                        Format.db(state.thresholdDb) + ".",
                 )
                 Spacer(Modifier.height(8.dp))
                 Button(
@@ -257,6 +271,16 @@ private fun VerificationCard(state: CalibrationState) {
                 StatTile("szczyt mowy", Format.db(state.speechPeakDb))
                 StatTile("średnia", Format.db(state.speechMeanDb))
                 StatTile("ramek nad progiem", state.longestRunFrames.toString())
+                StatTile("ocena mowy", state.speechScore?.let { Format.score(it) } ?: "—")
+            }
+            state.speechScore?.let { score ->
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Filtr mowy ocenił tę wypowiedź na ${Format.score(score)}. Próg filtru ustaw " +
+                        "wyraźnie poniżej tej wartości — inaczej wytnie dokładnie to, co chcesz łapać. " +
+                        "Klipy z samym oddechem dostają zwykle poniżej 0,30.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             if (!ok) {
                 Spacer(Modifier.height(12.dp))

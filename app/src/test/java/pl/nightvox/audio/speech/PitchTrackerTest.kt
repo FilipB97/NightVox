@@ -49,6 +49,40 @@ class PitchTrackerTest {
         assertTrue("szum uznany za okresowy: ${estimate.strength}", estimate.strength < 0.35f)
     }
 
+    /**
+     * Regresja z prawdziwej nocy. Tło w sypialni ma 75–96% energii **poniżej 200 Hz** — to
+     * dudnienie budynku i szum własny mikrofonu, a nie dźwięk. Autokorelacja takiego sygnału
+     * opada bardzo wolno (0,97 przy lagu 1, wciąż 0,70 przy lagu 30), więc szukanie szczytu od
+     * najmniejszego dozwolonego lagu zawsze trafiało w ten stok i meldowało „ton 400 Hz,
+     * okresowość 0,77". Dla **mediany** okna, nie dla wyjątku — cały oddech dostawał za to
+     * premię za dźwięczność.
+     *
+     * Sygnał, który nie ma ani jednej składowej powyżej 80 Hz, nie może mieć tonu
+     * podstawowego 400 Hz. To jest cała treść tego testu.
+     */
+    @Test
+    fun szum_o_energii_ponizej_80_hz_nie_jest_tonem_400_hz() {
+        val random = Random(11)
+        val noise = FloatArray(windowSamples)
+        val binHz = sampleRate.toDouble() / windowSamples
+        var f = binHz
+        while (f <= 80.0) {
+            val phase = random.nextDouble() * 2 * PI
+            for (i in noise.indices) {
+                noise[i] += sin(2 * PI * f * i / sampleRate + phase).toFloat()
+            }
+            f += binHz
+        }
+
+        val estimate = tracker().estimate(noise, windowSamples)
+        assertTrue(
+            "sygnał bez energii nad 80 Hz zgłoszony jako ton ${estimate.hz} Hz " +
+                "o sile ${estimate.strength}",
+            estimate.hz == 0f || estimate.hz < 150f,
+        )
+        assertEquals(0f, SpeechScorer.pitchWeight(estimate.hz), 1e-6f)
+    }
+
     @Test
     fun cisza_nie_daje_tonu() {
         val estimate = tracker().estimate(FloatArray(windowSamples), windowSamples)

@@ -40,8 +40,12 @@ enum class DiscardReason {
 }
 
 sealed interface GateAction {
-    /** Otwórz nowy plik klipu. */
-    data class OpenClip(val startedAtMs: Long) : GateAction
+    /**
+     * Otwórz nowy plik klipu. [thresholdDb] to próg, przy którym zdarzenie się wyzwoliło —
+     * analiza mowy używa go, żeby nie oceniać pre-rolla i hangoveru, czyli siedmiu sekund
+     * tła doklejonych do każdego klipu.
+     */
+    data class OpenClip(val startedAtMs: Long, val thresholdDb: Float = LevelMeter.MIN_DBFS) : GateAction
 
     /** Dopisz PCM do bieżącego pliku. Tablica należy już do odbiorcy. */
     class Write(val samples: ShortArray) : GateAction
@@ -74,7 +78,17 @@ class Gate(
         private set
 
     val floorDb: Float get() = floorTracker.floorDb
-    val triggerThresholdDb: Float get() = floorTracker.floorDb + config.triggerDeltaDb
+    /**
+     * Próg wyzwolenia: tło + delta, ale **nigdy niżej** niż [GateConfig.minTriggerDb].
+     *
+     * Sam próg względny wystarcza dopóki tło jest jakieś. W cichej sypialni zmierzone tło
+     * schodzi do −78 dBFS, a wtedy „tło + 15 dB" to −63 dBFS — poziom, na którym nie ma już
+     * niczego słyszalnego, tylko szum własny mikrofonu i szelest pościeli. Noc na takim progu
+     * daje trzysta nagrań, na których nic nie słychać. Bezwzględna podłoga jest twardym
+     * ograniczeniem od dołu i nie zależy od tego, jak cichy okaże się pokój.
+     */
+    val triggerThresholdDb: Float
+        get() = maxOf(floorTracker.floorDb + config.triggerDeltaDb, config.minTriggerDb)
     val releaseThresholdDb: Float get() = triggerThresholdDb - config.releaseHysteresisDb
     val isWarmingUp: Boolean get() = state == GateState.WARMUP
 
@@ -95,12 +109,38 @@ class Gate(
 
     // --- liczniki maszyny stanów ---
     private var aboveRun = 0
+    private var floorBlockedRun = 0
+
+    /**
+     * Ile zdarzeń przeszłoby próg względny, ale zatrzymała je [GateConfig.minTriggerDb].
+     *
+     * Bez tego licznika podłoga jest niewidoczna: przy zbyt wysokiej wartości noc kończy się
+     * pustą listą i nie wiadomo, czy było cicho, czy filtr zjadł wszystko. Ta liczba trafia do
+     * logu diagnostycznego na koniec sesji.
+     */
+    var eventsBlockedByFloor = 0
+        private set
     private var hangoverRun = 0
     private var lingerRun = 0
 
     // --- bufor okna scalania ---
     private val pending = ArrayList<ShortArray>()
     private var pendingVoicedFrames = 0L
+
+    /** Zdarzenia, które przeszłyby próg względny, ale nie przeszły bezwzględnej podłogi. */
+    private fun countFloorBlocked(db: Float) {
+        if (state != GateState.IDLE) {
+            floorBlockedRun = 0
+            return
+        }
+        val relative = floorTracker.floorDb + config.triggerDeltaDb
+        if (db > relative && db <= config.minTriggerDb) {
+            floorBlockedRun++
+            if (floorBlockedRun == config.attackFrames) eventsBlockedByFloor++
+        } else if (db <= relative) {
+            floorBlockedRun = 0
+        }
+    }
 
     /**
      * Przetwarza jedną ramkę. Zwraca akcje do wykonania przez zapisywacz — pusta lista
@@ -112,6 +152,8 @@ class Gate(
         val rms = LevelMeter.rms(frame.samples)
         val db = LevelMeter.toDbfs(rms)
         lastLevelDb = db
+
+        countFloorBlocked(db)
 
         val actions = ArrayList<GateAction>(2)
         val emit: (GateAction) -> Unit = actions::add
@@ -223,7 +265,7 @@ class Gate(
         clipPeakLinear = 0
         clipSegments = 1
 
-        emit(GateAction.OpenClip(clipStartedAtMs))
+        emit(GateAction.OpenClip(clipStartedAtMs, triggerThresholdDb))
         if (preRoll.isNotEmpty()) {
             accumulate(preRoll, preRoll.size)
             emit(GateAction.Write(preRoll))
