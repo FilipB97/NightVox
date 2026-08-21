@@ -130,6 +130,36 @@ object SpeechFixtures {
         return gain
     }
 
+    /**
+     * Klip taki, jaki naprawdę zapisuje bramka: pre-roll tła, zdarzenie, hangover tła.
+     * Bez tego testy analizatora badają sygnał, którego w plikach nigdy nie ma — do każdego
+     * klipu doklejone jest siedem sekund ciszy.
+     */
+    fun withPreRollAndHangover(
+        event: ShortArray,
+        backgroundDbfs: Float = -75f,
+        preRollMs: Long = 3_000,
+        hangoverMs: Long = 4_000,
+        seed: Int = 5,
+    ): ShortArray {
+        val pre = samples(preRollMs)
+        val post = samples(hangoverMs)
+        val out = quietNoise(pre + event.size + post, backgroundDbfs, seed)
+        for (i in event.indices) {
+            out[pre + i] = (out[pre + i] + event[i]).coerceIn(-32768, 32767).toShort()
+        }
+        return out
+    }
+
+    /** Szum o zadanym RMS — tło sypialni. */
+    fun quietNoise(lengthSamples: Int, dbfs: Float, seed: Int = 5): ShortArray {
+        val random = Random(seed)
+        val amplitude = 32768.0 * Math.pow(10.0, dbfs / 20.0) * Math.sqrt(3.0)
+        return ShortArray(lengthSamples) {
+            (random.nextDouble() * 2 - 1).times(amplitude).toInt().coerceIn(-32768, 32767).toShort()
+        }
+    }
+
     fun samples(durationMs: Long): Int = (durationMs * SAMPLE_RATE / 1000).toInt()
 
     private fun clip(value: Double): Short = value.toInt().coerceIn(-32768, 32767).toShort()

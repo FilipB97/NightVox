@@ -19,6 +19,13 @@ data class PitchEstimate(val hz: Float, val strength: Float) {
  * [MIN_HZ]..[MAX_HZ] i zwracamy **częstotliwość**, a nie samo „okresowe / nieokresowe” —
  * decyzję, co z tym zrobić, podejmuje [SpeechScorer].
  *
+ * Szczytu szukamy **za pierwszym przejściem autokorelacji przez zero**, nie od razu od
+ * najmniejszego dozwolonego lagu. Bez tego dla szumu dolnoprzepustowego — a takim jest
+ * oddech po torze mikrofon + AAC — korelacja przy małych lagach jest wysoka po prostu
+ * dlatego, że sąsiednie próbki są skorelowane. Na prawdziwej nocy dawało to medianę okna
+ * „ton 400 Hz, okresowość 0,7”, czyli detektor uznawał **oddech za dźwięk dźwięczny** i
+ * doliczał mu za to premię. Po poprawce ta sama mediana to okresowość 0,01.
+ *
  * Sygnał decymujemy 2× (z filtrem [0,25; 0,5; 0,25] przeciw aliasingowi), bo ton krtaniowy
  * leży grubo poniżej 4 kHz, a decymacja czterokrotnie skraca pętlę korelacji.
  */
@@ -33,41 +40,56 @@ class PitchTracker(
 
     private val minLag = maxOf(2, (decimatedRate / maxHz).toInt())
     private val maxLag = minOf(decimated.size - MIN_OVERLAP, (decimatedRate / minHz).toInt())
+    private val acf = DoubleArray(maxOf(maxLag, minLag) + 1)
+    private val prefix = DoubleArray(decimated.size + 1)
 
     /** [count] próbek z [samples]; wartości w dowolnej skali — wynik jest znormalizowany. */
     fun estimate(samples: FloatArray, count: Int): PitchEstimate {
         val n = decimate(samples, count)
-        if (n <= minLag + MIN_OVERLAP || maxLag <= minLag) return PitchEstimate.NONE
+        val lastLag = minOf(maxLag, n - MIN_OVERLAP)
+        if (n <= minLag + MIN_OVERLAP || lastLag <= minLag) return PitchEstimate.NONE
 
         var mean = 0.0
         for (i in 0 until n) mean += decimated[i]
         mean /= n
         for (i in 0 until n) decimated[i] = (decimated[i] - mean).toFloat()
 
-        var energy = 0.0
-        for (i in 0 until n) energy += decimated[i].toDouble() * decimated[i]
-        if (energy <= 0.0) return PitchEstimate.NONE
+        // Sumy prefiksowe kwadratów: energia obu okien korelacji bez liczenia jej co lag.
+        prefix[0] = 0.0
+        for (i in 0 until n) prefix[i + 1] = prefix[i] + decimated[i].toDouble() * decimated[i]
+        val total = prefix[n]
+        if (total <= 0.0) return PitchEstimate.NONE
+
+        for (lag in 1..lastLag) {
+            val len = n - lag
+            var dot = 0.0
+            for (i in 0 until len) dot += decimated[i].toDouble() * decimated[i + lag]
+            val energyA = prefix[len]
+            val energyB = total - prefix[lag]
+            val denominator = sqrt(energyA * energyB)
+            acf[lag] = if (denominator > 0.0) dot / denominator else 0.0
+        }
+
+        // Pierwsze przejście przez zero kończy „ramię” przy lagu 0. Szczyt szukany przed nim
+        // jest artefaktem dolnoprzepustowości sygnału, nie okresem.
+        var zeroCrossing = 0
+        for (lag in 1..lastLag) {
+            if (acf[lag] <= 0.0) {
+                zeroCrossing = lag
+                break
+            }
+        }
+        // Brak przejścia przez zero = w oknie nie ma okresu krótszego niż okno; nie zgadujemy.
+        if (zeroCrossing == 0) return PitchEstimate.NONE
+
+        val searchFrom = maxOf(minLag, zeroCrossing)
+        if (searchFrom > lastLag) return PitchEstimate.NONE
 
         var bestLag = 0
         var bestValue = 0.0
-        val lastLag = minOf(maxLag, n - MIN_OVERLAP)
-        for (lag in minLag..lastLag) {
-            val len = n - lag
-            var dot = 0.0
-            var energyA = 0.0
-            var energyB = 0.0
-            for (i in 0 until len) {
-                val a = decimated[i].toDouble()
-                val b = decimated[i + lag].toDouble()
-                dot += a * b
-                energyA += a * a
-                energyB += b * b
-            }
-            val denominator = sqrt(energyA * energyB)
-            if (denominator <= 0.0) continue
-            val value = dot / denominator
-            if (value > bestValue) {
-                bestValue = value
+        for (lag in searchFrom..lastLag) {
+            if (acf[lag] > bestValue) {
+                bestValue = acf[lag]
                 bestLag = lag
             }
         }

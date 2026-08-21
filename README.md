@@ -118,6 +118,10 @@ z planu:
 | `sinus daje szczyt w swoim prazku` / `energia widma…` | FFT: poprawność i skala (Parseval) |
 | `histogram rozdziela zapisane od odrzuconych` | statystyki nocy, łącznie z oceną 1,0 na krańcu |
 | `przecinek w nazwie pliku jest cytowany` | eksport CSV nie rozjeżdża się na dziwnej nazwie |
+| `szum o energii ponizej 80 hz nie jest tonem 400 hz` | regresja: oddech brany za dźwięk dźwięczny |
+| `podloga progu odcina zdarzenia zbyt ciche…` | `minTriggerDb` naprawdę ogranicza próg od dołu |
+| `tlo wokol zdarzenia nie zmienia oceny` | pre-roll i hangover nie wpływają na ocenę mowy |
+| `krotki blysk nie wystarcza zeby uznac klip za mowe` | ocena musi utrzymać się przez sylabę |
 
 Testy instrumentacyjne (`app/src/androidTest`) wymagają urządzenia lub emulatora i
 pokrywają integralność `.m4a` (`MediaExtractor` odczytuje zadeklarowaną długość), Room,
@@ -166,6 +170,7 @@ Bez frameworka DI — `AppContainer` w zupełności wystarcza przy tej liczbie o
 | Parametr | Default | Zakres |
 |---|---|---|
 | `triggerDeltaDb` | 12 dB | 6–24 |
+| `minTriggerDb` | −50 dBFS | −70…−30 |
 | `attackFrames` | 3 (60 ms) | 1–10 |
 | `preRollMs` | 3000 | 1000–6000 |
 | `hangoverMs` | 4000 | 1000–10000 |
@@ -173,7 +178,7 @@ Bez frameworka DI — `AppContainer` w zupełności wystarcza przy tej liczbie o
 | `minVoicedMs` | 400 | 100–2000 |
 | `maxClipMs` | 120 s | 30–600 s |
 | filtr mowy | włączony | wł./wył. |
-| próg mowy | 0,40 | 0,15–0,80 |
+| próg mowy | 0,50 | 0,15–0,80 |
 | auto-stop | 09:00 / max 10 h | — |
 | `retentionDays` | 30 | 0 (nigdy) – 365 |
 | `discardedRetentionDays` | 7 | 1–30 |
@@ -220,6 +225,54 @@ syntetycznych, które mają zadane własności — dowodzą, że detektor mierzy
 nie że sprawdzi się w konkretnej sypialni. Dlatego ocena każdego klipu (razem z cechami
 składowymi) trafia do logu diagnostycznego, klipy odrzucone zostają do odsłuchania, a próg
 da się przesunąć bez przebudowy aplikacji.
+
+### Strojenie na prawdziwej nocy
+
+Pierwsza noc z filtrem: **315 zdarzeń, 27 przepuszczonych, na żadnym nie słychać mowy.**
+Eksport CSV pozwolił policzyć, co się właściwie stało, i wyszły trzy różne problemy — z czego
+tylko jeden był progiem.
+
+**1. Próg względny nie ma dolnego ograniczenia.** Tło tej nocy wyniosło −78 dBFS, czułość była
+ustawiona na 15 dB, czyli próg wypadł na −63 dBFS. Zdarzenia miały szczyt −60…−40 dBFS
+(mediana −56). Na tym poziomie nie ma już nic słyszalnego: szelest pościeli i szum własny
+mikrofonu. Im cichszy pokój, tym niżej schodzi próg i tym więcej śmieci — dokładnie odwrotnie,
+niż powinno. Stąd `minTriggerDb`: **bezwzględna podłoga**, poniżej której próg nie zejdzie,
+choćby tło było zerowe. Kalibracja wylicza ją z poziomu zmierzonego głosu (10 dB pod szczytem
+cichej wypowiedzi), a bramka liczy, ile zdarzeń podłoga ucięła, i wpisuje to do logu na koniec
+sesji — bo podłoga, która nie mówi, ile zjadła, nie różni cichej nocy od źle ustawionego progu.
+
+**2. Detektor tonu uznawał oddech za dźwięk dźwięczny.** To był zwykły błąd. Tło w sypialni ma
+75–96% energii poniżej 200 Hz, więc jego autokorelacja opada bardzo wolno — 0,97 przy lagu 1 i
+wciąż 0,70 przy lagu 30. Szukanie szczytu od najmniejszego dozwolonego lagu zawsze trafiało w
+to ramię i meldowało „ton 400 Hz, okresowość 0,77”, dla **mediany** okna. Cały oddech dostawał
+za to premię. Poprawka: szczytu szukamy dopiero za pierwszym przejściem autokorelacji przez
+zero. Ta sama mediana to teraz okresowość 0,01. Test regresyjny podaje sygnał bez ani jednej
+składowej powyżej 80 Hz i sprawdza, że nie zostaje zgłoszony jako ton 400 Hz — na starym
+kodzie ten test wywala się z siłą 0,69.
+
+**3. Ocena klipu była maksimum po wszystkich oknach.** Do każdego klipu bramka dokleja pre-roll
+(3 s) i hangover (4 s), czyli siedem sekund tła, a klip z ośmiu sekund oddechu ma kilkaset
+okien. Maksimum z kilkuset zaszumionych ocen to statystyka wartości skrajnych, nie własność
+dźwięku: mediana okna wynosiła 0,08, a maksimum klipu 0,77. Teraz analizator (a) w ogóle nie
+ocenia okien poniżej progu wyzwolenia, więc pre-roll i hangover odpadają, i (b) bierze
+najwyższą ocenę, która **utrzymała się przez pięć okien** (~160 ms, czyli sylabę). Zmienność
+widma liczy się dodatkowo między średnimi z trzech okien, a nie między sąsiednimi — pojedyncze
+okno szumu ma losowe pasma, więc różnica okno-do-okna wychodziła duża dla oddechu, który
+przecież niczego nie artykułuje.
+
+Co te trzy poprawki robią z **tą konkretną nocą**, przeliczone na jej nagraniach:
+
+| | przed | po |
+|---|---|---|
+| zdarzeń nagranych | 315 | 61 |
+| zapisanych (reszta do kosza) | 27 | 3 |
+| mediana oceny zdarzenia | 0,18 | 0,03 |
+
+Zastrzeżenie, które trzeba postawić jasno: w tej nocy **nie ma ani jednej wypowiedzi**, więc
+dane mówią wyłącznie o fałszywych trafieniach. Że mowa nadal przechodzi, sprawdzają testy na
+sygnałach syntetycznych — a to nie to samo co dowód. Dlatego kalibracja pokazuje teraz ocenę
+filtru dla **Twojego** głosu: jeden 5-sekundowy test daje liczbę, do której można ustawić próg,
+zamiast ufać moim syntetykom.
 
 ### Silero VAD — zrobiony i wycofany
 

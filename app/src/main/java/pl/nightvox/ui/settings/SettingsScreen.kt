@@ -99,6 +99,18 @@ fun SettingsScreen(
                 description = "Główna gałka. Niżej = więcej klipów i więcej śmieci, wyżej = ryzyko przegapienia cichego mamrotania.",
             )
             ParameterSlider(
+                label = "Podłoga progu (minTriggerDb)",
+                valueText = Format.db(settings.minTriggerDb),
+                value = settings.minTriggerDb,
+                range = NightVoxSettings.MIN_TRIGGER_RANGE_DB,
+                steps = 39,
+                onValueChange = { v -> viewModel.update { it.copy(minTriggerDb = v.roundToInt().toFloat()) } },
+                description = "Próg wyzwolenia nie zejdzie poniżej tej wartości, choćby pokój był bardzo " +
+                    "cichy. W cichej sypialni tło potrafi spaść do −78 dB i wtedy „tło + czułość” wypada " +
+                    "na poziomie, na którym nie ma już nic słyszalnego — sama pościel i szum mikrofonu. " +
+                    "Kalibracja wylicza tę wartość z poziomu Twojego głosu.",
+            )
+            ParameterSlider(
                 label = "Anty-trzask (attackFrames)",
                 valueText = "${settings.attackFrames} ramek · ${settings.attackFrames * 20} ms",
                 value = settings.attackFrames.toFloat(),

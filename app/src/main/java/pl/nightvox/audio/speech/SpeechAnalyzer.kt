@@ -23,6 +23,15 @@ class SpeechAnalyzer(
     private val hopSamples: Int = DEFAULT_HOP,
     /** Powyżej tej oceny okno liczy się jako mowa przy sumowaniu [SpeechScore.speechMs]. */
     private val speechThreshold: Float = DEFAULT_THRESHOLD,
+    /**
+     * Ile kolejnych okien musi utrzymać ocenę, żeby się liczyła.
+     *
+     * Bez tego oceną klipu jest maksimum po **wszystkich** oknach, a klip z ośmiu sekund
+     * oddechu ma ich kilkaset. Maksimum z kilkuset zaszumionych ocen to statystyka wartości
+     * skrajnych, nie własność dźwięku — na prawdziwej nocy mediana okna wynosiła 0,08, a
+     * maksimum klipu 0,77. Pięć okien to ok. 160 ms, czyli sylaba.
+     */
+    private val runWindows: Int = DEFAULT_RUN_WINDOWS,
 ) {
     private val fft = Fft(windowSamples)
     private val window = Fft.hann(windowSamples)
@@ -34,8 +43,16 @@ class SpeechAnalyzer(
     private val windowed = FloatArray(windowSamples)
     private val spectrum = FloatArray(fft.bins)
     private val bands = FloatArray(BAND_COUNT)
-    private val previousBands = FloatArray(BAND_COUNT)
-    private var hasPrevious = false
+
+    /**
+     * Sześć ostatnich wektorów pasm. Zmienność liczymy między średnią z trzech najnowszych a
+     * średnią z trzech poprzednich, a nie między sąsiednimi oknami: pojedyncze okno szumu ma
+     * losowe pasma, więc różnica okno-do-okna wychodzi duża dla oddechu, który przecież
+     * niczego nie artykułuje. Uśrednienie po czasie tę losowość zbija, a ruch formantów —
+     * trwający 50–100 ms — przeżywa.
+     */
+    private val bandHistory = Array(FLUX_HISTORY) { FloatArray(BAND_COUNT) }
+    private var historyCount = 0
 
     private val bandEdges = logSpacedEdges()
     private val binHz = sampleRate.toFloat() / windowSamples
@@ -49,10 +66,18 @@ class SpeechAnalyzer(
 
     val hopMs: Long = hopSamples.toLong() * 1000L / sampleRate
 
+    /**
+     * Poniżej tego poziomu okno nie jest w ogóle analizowane. Ustawiane na próg, przy którym
+     * bramka wyzwoliła klip: pre-roll i hangover to razem siedem sekund tła doklejonego do
+     * każdego nagrania i nie ma powodu szukać w nich mowy.
+     */
+    private var levelFloorDb: Float = NO_FLOOR
+
     /** Nowy klip: kontekst poprzedniego nie ma tu nic do rzeczy. */
-    fun reset() {
+    fun reset(levelFloorDb: Float = NO_FLOOR) {
+        this.levelFloorDb = levelFloorDb
         filled = 0
-        hasPrevious = false
+        historyCount = 0
         scores.clear()
         envelope.clear()
         pitches.clear()
@@ -87,12 +112,21 @@ class SpeechAnalyzer(
         val factor = MODULATION_FLOOR + (1f - MODULATION_FLOOR) *
             SpeechScorer.ramp(modulation, MODULATION_LOW, MODULATION_HIGH)
 
-        var max = 0f
         var speechWindows = 0
         for (value in smoothed) {
-            val corrected = value * factor
-            if (corrected > max) max = corrected
-            if (corrected >= speechThreshold) speechWindows++
+            if (value * factor >= speechThreshold) speechWindows++
+        }
+        // Ocena klipu = najwyższa wartość, która utrzymała się przez [runWindows] okien.
+        var max = 0f
+        if (smoothed.size >= runWindows) {
+            for (start in 0..smoothed.size - runWindows) {
+                var lowest = Float.MAX_VALUE
+                for (i in start until start + runWindows) {
+                    if (smoothed[i] < lowest) lowest = smoothed[i]
+                }
+                val corrected = lowest * factor
+                if (corrected > max) max = corrected
+            }
         }
 
         val n = scores.size
@@ -115,18 +149,19 @@ class SpeechAnalyzer(
         for (i in 0 until windowSamples) {
             val s = buffer[i]
             sumSquares += s.toDouble() * s
-            windowed[i] = s * window[i]
         }
         val rms = sqrt(sumSquares / windowSamples)
         val energyDb = (20.0 * log10(maxOf(rms, 1e-6))).toFloat()
+        // Cisza między zdarzeniami nie jest kandydatem na mowę — i nie warto jej liczyć.
+        if (energyDb < levelFloorDb) return
+
+        for (i in 0 until windowSamples) windowed[i] = buffer[i] * window[i]
 
         fft.powerSpectrum(windowed, spectrum)
         val hiRatio = highBandRatio()
         fillBands()
         val flatness = flatness()
-        val flux = if (hasPrevious) fluxAgainstPrevious() else 0f
-        System.arraycopy(bands, 0, previousBands, 0, BAND_COUNT)
-        hasPrevious = true
+        val flux = pushHistoryAndComputeFlux()
 
         val pitch = pitchTracker.estimate(buffer, windowSamples)
 
@@ -202,9 +237,25 @@ class SpeechAnalyzer(
         return if (arithmetic <= 0.0) 0f else (geometric / arithmetic).toFloat().coerceIn(0f, 1f)
     }
 
-    private fun fluxAgainstPrevious(): Float {
+    /** Dokłada bieżące pasma do historii i zwraca zmienność widma; 0, dopóki historii brak. */
+    private fun pushHistoryAndComputeFlux(): Float {
+        val slot = bandHistory[historyCount % FLUX_HISTORY]
+        System.arraycopy(bands, 0, slot, 0, BAND_COUNT)
+        historyCount++
+        if (historyCount < FLUX_HISTORY) return 0f
+
         var distance = 0.0
-        for (b in 0 until BAND_COUNT) distance += abs(bands[b] - previousBands[b])
+        val half = FLUX_HISTORY / 2
+        for (b in 0 until BAND_COUNT) {
+            var older = 0f
+            var newer = 0f
+            for (k in 0 until half) {
+                // historyCount wskazuje slot *po* najnowszym; cofamy się o k pozycji.
+                newer += bandHistory[(historyCount - 1 - k + FLUX_HISTORY * 2) % FLUX_HISTORY][b]
+                older += bandHistory[(historyCount - 1 - half - k + FLUX_HISTORY * 2) % FLUX_HISTORY][b]
+            }
+            distance += abs(newer - older) / half
+        }
         // L1 między dwoma rozkładami mieści się w [0, 2].
         return (distance / 2.0).toFloat().coerceIn(0f, 1f)
     }
@@ -278,6 +329,15 @@ class SpeechAnalyzer(
         const val DEFAULT_HOP = 512
 
         const val DEFAULT_THRESHOLD = 0.5f
+
+        /** 5 okien ≈ 160 ms, czyli sylaba. */
+        const val DEFAULT_RUN_WINDOWS = 5
+
+        /** Brak dolnego ograniczenia poziomu — analizuj wszystko. */
+        const val NO_FLOOR = -1000f
+
+        /** Trzy najnowsze okna kontra trzy poprzednie. */
+        private const val FLUX_HISTORY = 6
 
         private const val SCALE = 32768f
         private const val EPSILON = 1e-9

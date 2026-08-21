@@ -33,6 +33,7 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { prefs ->
             val updated = transform(prefs.toSettings())
             prefs[Keys.TRIGGER_DELTA_DB] = updated.triggerDeltaDb
+            prefs[Keys.MIN_TRIGGER_DB] = updated.minTriggerDb
             prefs[Keys.ATTACK_FRAMES] = updated.attackFrames
             prefs[Keys.PRE_ROLL_MS] = updated.preRollMs
             prefs[Keys.HANGOVER_MS] = updated.hangoverMs
@@ -63,6 +64,7 @@ class SettingsStore(private val context: Context) {
         val autoStopEnabled = this[Keys.AUTO_STOP_ENABLED] ?: (d.autoStopHour != null)
         return NightVoxSettings(
             triggerDeltaDb = this[Keys.TRIGGER_DELTA_DB] ?: d.triggerDeltaDb,
+            minTriggerDb = this[Keys.MIN_TRIGGER_DB] ?: d.minTriggerDb,
             attackFrames = this[Keys.ATTACK_FRAMES] ?: d.attackFrames,
             preRollMs = this[Keys.PRE_ROLL_MS] ?: d.preRollMs,
             hangoverMs = this[Keys.HANGOVER_MS] ?: d.hangoverMs,
@@ -85,6 +87,7 @@ class SettingsStore(private val context: Context) {
 
     private object Keys {
         val TRIGGER_DELTA_DB = floatPreferencesKey("trigger_delta_db")
+        val MIN_TRIGGER_DB = floatPreferencesKey("min_trigger_db")
         val ATTACK_FRAMES = intPreferencesKey("attack_frames")
         val PRE_ROLL_MS = longPreferencesKey("pre_roll_ms")
         val HANGOVER_MS = longPreferencesKey("hangover_ms")

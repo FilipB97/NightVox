@@ -10,6 +10,12 @@ import pl.nightvox.audio.GateConfig
 @Serializable
 data class NightVoxSettings(
     val triggerDeltaDb: Float = 12f,
+    /**
+     * Bezwzględna podłoga progu wyzwolenia w dBFS — próg względny nie zejdzie niżej.
+     * Chroni przed tym, że w bardzo cichym pokoju „tło + delta" wypada na poziomie, na którym
+     * nie ma już nic słyszalnego.
+     */
+    val minTriggerDb: Float = -50f,
     val attackFrames: Int = 3,
     val preRollMs: Long = 3_000,
     val hangoverMs: Long = 4_000,
@@ -23,7 +29,7 @@ data class NightVoxSettings(
      */
     val speechFilterEnabled: Boolean = true,
     /** Próg oceny mowy 0..1. Wyżej = mniej klipów, większe ryzyko wycięcia cichego mamrotania. */
-    val speechFilterThreshold: Float = 0.40f,
+    val speechFilterThreshold: Float = 0.50f,
     /** Godzina auto-stopu (0..23), `null` = wyłączony. */
     val autoStopHour: Int? = 9,
     val autoStopMinute: Int = 0,
@@ -44,6 +50,7 @@ data class NightVoxSettings(
 ) {
     fun toGateConfig(): GateConfig = GateConfig(
         triggerDeltaDb = triggerDeltaDb,
+        minTriggerDb = minTriggerDb,
         attackFrames = attackFrames,
         preRollMs = preRollMs,
         hangoverMs = hangoverMs,
@@ -56,6 +63,7 @@ data class NightVoxSettings(
         val DEFAULTS = NightVoxSettings()
 
         val TRIGGER_DELTA_RANGE = 6f..24f
+        val MIN_TRIGGER_RANGE_DB = -70f..-30f
         val ATTACK_FRAMES_RANGE = 1..10
         val PRE_ROLL_RANGE_MS = 1_000L..6_000L
         val HANGOVER_RANGE_MS = 1_000L..10_000L

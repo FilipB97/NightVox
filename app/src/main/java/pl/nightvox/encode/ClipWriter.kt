@@ -99,7 +99,7 @@ class ClipWriter(
 
     private suspend fun handle(action: GateAction) {
         when (action) {
-            is GateAction.OpenClip -> openClip(action.startedAtMs)
+            is GateAction.OpenClip -> openClip(action.startedAtMs, action.thresholdDb)
             is GateAction.Write -> {
                 if (!skipCurrentClip) {
                     encoder?.write(action.samples)
@@ -124,7 +124,7 @@ class ClipWriter(
         }
     }
 
-    private suspend fun openClip(startedAtMs: Long) {
+    private suspend fun openClip(startedAtMs: Long, thresholdDb: Float) {
         abortOpenEncoder()
         skipCurrentClip = false
 
@@ -135,7 +135,7 @@ class ClipWriter(
             return
         }
 
-        speechDetector?.start()
+        speechDetector?.start(thresholdDb)
         val file = nextClipFile(startedAtMs)
         try {
             encoder = AacEncoder(file, sampleRate, bitRate).apply { start() }

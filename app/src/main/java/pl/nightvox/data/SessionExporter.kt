@@ -75,6 +75,7 @@ class SessionExporter(
         repository.decodeSettings(session.settingsSnapshot)?.let { s ->
             appendLine("Parametry bramki użyte tej nocy:")
             appendLine("  triggerDeltaDb  ${s.triggerDeltaDb}")
+            appendLine("  minTriggerDb    ${s.minTriggerDb}")
             appendLine("  attackFrames    ${s.attackFrames}")
             appendLine("  preRollMs       ${s.preRollMs}")
             appendLine("  hangoverMs      ${s.hangoverMs}")

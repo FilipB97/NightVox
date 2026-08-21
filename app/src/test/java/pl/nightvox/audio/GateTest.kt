@@ -31,9 +31,11 @@ class GateTest {
         mergeGapMs: Long = 2_000,
         minVoicedMs: Long = 400,
         maxClipMs: Long = 120_000,
+        minTriggerDb: Float = -90f,
     ) = GateConfig(
         warmupMs = warmupMs,
         triggerDeltaDb = triggerDeltaDb,
+        minTriggerDb = minTriggerDb,
         attackFrames = attackFrames,
         preRollMs = preRollMs,
         hangoverMs = hangoverMs,
@@ -41,6 +43,54 @@ class GateTest {
         minVoicedMs = minVoicedMs,
         maxClipMs = maxClipMs,
     )
+
+    /**
+     * Podłoga progu z prawdziwej nocy: tło −78 dBFS, czułość 15 dB, czyli próg −63 dBFS —
+     * poziom, na którym nie ma już nic słyszalnego. Osiem godzin dało 315 nagrań, na żadnym
+     * nie było mowy. Próg względny sam z siebie nie ma dolnego ograniczenia, więc im cichszy
+     * pokój, tym więcej śmieci; podłoga jest tym ograniczeniem.
+     */
+    @Test
+    fun `podloga progu odcina zdarzenia zbyt ciche, by cokolwiek znaczyly`() {
+        val quietFloor = -78f
+        val whisper = -60f
+        val cfg = config(triggerDeltaDb = 12f, minTriggerDb = -50f)
+
+        val signal = noise(msToSamples(20_000), quietFloor)
+        mixInto(signal, tone(msToSamples(2_000), whisper), msToSamples(10_000))
+
+        val withFloor = GateHarness(cfg).apply { feed(signal); finish() }
+        assertEquals(
+            "zdarzenie 18 dB nad tłem, ale 10 dB pod podłogą progu, nie powinno nic nagrać",
+            0,
+            withFloor.clips.size + withFloor.discarded.size,
+        )
+
+        // Bez podłogi to samo zdarzenie przechodzi — czyli test mierzy podłogę, a nie poziom.
+        val withoutFloor = GateHarness(config(triggerDeltaDb = 12f, minTriggerDb = -90f))
+            .apply { feed(signal); finish() }
+        assertEquals(1, withoutFloor.clips.size)
+    }
+
+    /**
+     * Podłoga, która nic nie mówi o tym, ile ucięła, jest gorsza niż jej brak: pusta lista
+     * rano nie odróżnia cichej nocy od źle ustawionego progu.
+     */
+    @Test
+    fun `bramka liczy zdarzenia uciete przez podloge progu`() {
+        val gate = Gate(config(triggerDeltaDb = 12f, minTriggerDb = -50f))
+        val signal = noise(msToSamples(20_000), -78f)
+        mixInto(signal, tone(msToSamples(1_000), -60f), msToSamples(10_000))
+        mixInto(signal, tone(msToSamples(1_000), -60f), msToSamples(15_000))
+
+        var offset = 0
+        while (offset + FRAME <= signal.size) {
+            gate.process(Frame(signal.copyOfRange(offset, offset + FRAME), offset.toLong()))
+            offset += FRAME
+        }
+
+        assertEquals(2, gate.eventsBlockedByFloor)
+    }
 
     @Test
     fun `cicha noc nie produkuje klipow`() {
