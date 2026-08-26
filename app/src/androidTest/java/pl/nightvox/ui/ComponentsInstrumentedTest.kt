@@ -1,8 +1,10 @@
 package pl.nightvox.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
@@ -86,7 +88,10 @@ class ComponentsInstrumentedTest {
                 }
             }
         }
-        compose.onNodeWithText("PRÓG").assertIsDisplayed()
+        // Trzy mierniki to trzy legendy — `onNodeWithText` wymaga dokładnie jednego trafienia,
+        // więc liczymy wszystkie. Sam fakt, że kompozycja doszła do końca, jest tu treścią
+        // testu: gdyby któryś Canvas podzielił przez zero, nie byłoby żadnego węzła.
+        compose.onAllNodesWithText("PRÓG").assertCountEquals(3)
     }
 
     /** Klip bez pliku `.peaks` i klip z jednym kubełkiem. */
