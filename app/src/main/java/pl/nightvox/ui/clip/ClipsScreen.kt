@@ -2,6 +2,7 @@ package pl.nightvox.ui.clip
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,10 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Star
@@ -31,12 +35,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.nightvox.ui.components.EmptyState
+import pl.nightvox.ui.components.ScreenHeader
+import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,25 +67,24 @@ fun ClipsScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(horizontal = 20.dp)) {
-            Row(
-                Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Klipy",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Light,
-                )
-                if (filter == ClipFilter.DISCARDED && clips.isNotEmpty()) {
-                    IconButton(onClick = viewModel::clearDiscarded) {
-                        Icon(Icons.Filled.DeleteSweep, contentDescription = "Opróżnij kosz")
+        Column(Modifier.padding(horizontal = Spacing.screen)) {
+            ScreenHeader(
+                title = "Klipy",
+                subtitle = when (filter) {
+                    ClipFilter.ALL -> "${clips.size} nagrań"
+                    ClipFilter.FAVORITES -> "${clips.size} ulubionych"
+                    ClipFilter.DISCARDED -> "${clips.size} w koszu"
+                },
+                trailing = {
+                    if (filter == ClipFilter.DISCARDED && clips.isNotEmpty()) {
+                        IconButton(onClick = viewModel::clearDiscarded) {
+                            Icon(Icons.Filled.DeleteSweep, contentDescription = "Opróżnij kosz")
+                        }
                     }
-                }
-            }
+                },
+            )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
                 FilterChip(
                     selected = filter == ClipFilter.ALL,
                     onClick = { viewModel.setFilter(ClipFilter.ALL) },
@@ -95,17 +101,20 @@ fun ClipsScreen(
                     label = { Text(if (discardedCount > 0) "Odrzucone ($discardedCount)" else "Odrzucone") },
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(Modifier.height(Spacing.small))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+            ) {
                 Text(
-                    "Kolejność",
+                    "KOLEJNOŚĆ",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 FilterChip(
                     selected = sort == ClipSort.NEWEST,
                     onClick = { viewModel.setSort(ClipSort.NEWEST) },
-                    label = { Text("Od najnowszych") },
+                    label = { Text("Najnowsze") },
                 )
                 FilterChip(
                     selected = sort == ClipSort.SCORE,
@@ -113,7 +122,6 @@ fun ClipsScreen(
                     label = { Text("Wg oceny mowy") },
                 )
             }
-            Spacer(Modifier.height(4.dp))
         }
 
         if (filter == ClipFilter.DISCARDED) {
@@ -123,16 +131,23 @@ fun ClipsScreen(
                     "wypowiedzią, obniż próg mowy albo minVoicedMs i przywróć klip.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = Spacing.screen, vertical = Spacing.medium),
             )
+        } else {
+            Spacer(Modifier.height(Spacing.small))
         }
 
         if (clips.isEmpty()) {
             EmptyState(
-                when (filter) {
+                text = when (filter) {
                     ClipFilter.FAVORITES -> "Żaden klip nie jest jeszcze oznaczony jako ulubiony."
                     ClipFilter.DISCARDED -> "Kosz jest pusty — ani bramka, ani filtr mowy niczego nie odrzuciły."
-                    ClipFilter.ALL -> "Brak klipów. Uruchom sesję i prześpij z nią noc."
+                    ClipFilter.ALL -> "Brak klipów.\nUruchom sesję i prześpij z nią noc."
+                },
+                icon = when (filter) {
+                    ClipFilter.FAVORITES -> Icons.Filled.StarBorder
+                    ClipFilter.DISCARDED -> Icons.Filled.DeleteSweep
+                    ClipFilter.ALL -> Icons.Filled.GraphicEq
                 },
             )
         } else {
@@ -142,7 +157,7 @@ fun ClipsScreen(
             val nights = remember(clips, sort) {
                 if (sort == ClipSort.NEWEST) clips.groupBy { Format.date(it.clip.startedAt) } else null
             }
-            LazyColumn(Modifier.padding(horizontal = 20.dp)) {
+            LazyColumn(Modifier.padding(horizontal = Spacing.screen)) {
                 if (nights != null) {
                     nights.forEach { (night, items) ->
                         item(key = "header-$night") {
@@ -216,41 +231,25 @@ private fun ClipListRow(
     Row(
         Modifier
             .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
+            .padding(vertical = Spacing.medium, horizontal = Spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onPlay, enabled = item.fileExists) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = "Odtwórz")
-        }
-        Column(Modifier.weight(1f).padding(start = 4.dp)) {
+        PlayDisc(enabled = item.fileExists, onClick = onPlay)
+
+        Column(Modifier.weight(1f).padding(start = Spacing.medium)) {
+            ClipRowTitle(item = item, showDate = showDate)
+            Spacer(Modifier.height(2.dp))
             Text(
-                if (showDate) {
-                    "${Format.time(item.clip.startedAt)}  ·  ${Format.date(item.clip.startedAt)}"
-                } else {
-                    Format.time(item.clip.startedAt)
-                },
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Text(
-                buildString {
-                    append(Format.clipDuration(item.clip.durationMs))
-                    append(" · szczyt ${Format.db(item.clip.peakDb)}")
-                    append(" · nad progiem ${item.clip.voicedMs} ms")
-                    item.clip.vadScore?.let { append(" · mowa ${Format.score(it)}") }
-                    if (item.sizeBytes > 0) append(" · ${Format.bytes(item.sizeBytes)}")
-                },
+                text = clipMeta(item),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (!item.fileExists) {
-            Icon(
-                Icons.Filled.WarningAmber,
-                contentDescription = "Brak pliku",
-                tint = MaterialTheme.colorScheme.error,
-            )
-        }
+
+        item.clip.vadScore?.let { ScorePill(it) }
+
         if (showRestore) {
             IconButton(onClick = onRestore) {
                 Icon(Icons.Filled.Restore, contentDescription = "Przywróć")
@@ -269,4 +268,79 @@ private fun ClipListRow(
             }
         }
     }
+}
+
+@Composable
+private fun PlayDisc(enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.PlayArrow,
+            contentDescription = "Odtwórz",
+            tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+@Composable
+private fun ClipRowTitle(item: ClipListItem, showDate: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(Format.time(item.clip.startedAt), style = MaterialTheme.typography.bodyLarge)
+        if (showDate) {
+            Spacer(Modifier.width(Spacing.small))
+            Text(
+                Format.date(item.clip.startedAt),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (!item.fileExists) {
+            Spacer(Modifier.width(Spacing.small))
+            Icon(
+                Icons.Filled.WarningAmber,
+                contentDescription = "Brak pliku",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
+}
+
+private fun clipMeta(item: ClipListItem): String = buildString {
+    append(Format.clipDuration(item.clip.durationMs))
+    append(" · szczyt ")
+    append(Format.db(item.clip.peakDb))
+    append(" · nad progiem ")
+    append(item.clip.voicedMs)
+    append(" ms")
+    if (item.sizeBytes > 0) {
+        append(" · ")
+        append(Format.bytes(item.sizeBytes))
+    }
+}
+
+/**
+ * Ocena mowy jako pastylka. Kolor niesie tę samą informację co liczba, więc przy przewijaniu
+ * stu klipów widać rozkład bez czytania — a to jest cały sens tego ekranu przy strojeniu.
+ */
+@Composable
+private fun ScorePill(score: Float) {
+    val scheme = MaterialTheme.colorScheme
+    val strong = score >= 0.5f
+    Text(
+        text = Format.score(score),
+        style = MaterialTheme.typography.labelMedium,
+        color = if (strong) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(if (strong) scheme.primaryContainer else scheme.surfaceContainerHigh)
+            .padding(horizontal = Spacing.small, vertical = Spacing.tiny),
+    )
 }

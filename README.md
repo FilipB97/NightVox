@@ -118,6 +118,8 @@ z planu:
 | `sinus daje szczyt w swoim prazku` / `energia widma…` | FFT: poprawność i skala (Parseval) |
 | `histogram rozdziela zapisane od odrzuconych` | statystyki nocy, łącznie z oceną 1,0 na krańcu |
 | `przecinek w nazwie pliku jest cytowany` | eksport CSV nie rozjeżdża się na dziwnej nazwie |
+| `miernik nie wywala sie na brzegowej historii` | Canvas: pusta i jednoelementowa historia poziomu |
+| `obwiednia nie wywala sie bez danych` | Canvas: klip bez pliku `.peaks` i z jednym kubełkiem |
 | `szum o energii ponizej 80 hz nie jest tonem 400 hz` | regresja: oddech brany za dźwięk dźwięczny |
 | `podloga progu odcina zdarzenia zbyt ciche…` | `minTriggerDb` naprawdę ogranicza próg od dołu |
 | `tlo wokol zdarzenia nie zmienia oceny` | pre-roll i hangover nie wpływają na ocenę mowy |
@@ -292,6 +294,32 @@ VAD dodatkiem. Dodatek, który zabija proces i którego nie da się naprawić be
 zarabia na 12 MB kodu natywnego na architekturę. Po usunięciu APK schudło z 74 MB do 2,7 MB i
 przestał być wybredny co do architektury. Kolumna `vadScore` została w schemacie i trzyma
 dziś ocenę z filtru opisanego wyżej, więc zamiana nie wymagała migracji.
+
+### Wygląd
+
+Jedna paleta, zawsze ciemna — także wtedy, gdy telefon jest w trybie jasnym. Apkę włącza się
+przy zgaszonym świetle tuż przed snem, więc biały ekran o 23:30 jest wrogiem użytkownika.
+Wcześniej obok tej palety stał szkic jasnej z trzema kolorami, z którego nigdy nie
+korzystaliśmy, a resztę dopowiadał Material — lepszy jeden motyw, który jest decyzją.
+
+Tło jest prawie czarne z niebieskim podkładem, powierzchnie różnią się od niego o kilka
+procent jasności, a akcent jest jeden. Kolor dostaje tylko to, co ma się wybić: poziom, próg,
+ostrzeżenie, ocena mowy nad progiem. Reszta zostaje szara.
+
+Trzy rzeczy, które robią tu robotę:
+
+- **Cyfry tabelaryczne** (`tnum`) w każdym stylu, który pokazuje liczby. Poziom i licznik czasu
+  odświeżają się kilka razy na sekundę; bez tego każda zmiana cyfry przesuwa napis w bok i
+  wykres wygląda, jakby drgał.
+- **Jeden pojemnik na treść** (`NightCard`) i jeden nagłówek ekranu (`ScreenHeader`) zamiast
+  czterech podobnych. Wcześniej każdy ekran wołał `Card(colors = …)` z własnym odcieniem i
+  własnym paddingiem, więc karty na sąsiednich ekranach nie były tą samą rzeczą.
+- **Skala odstępów** — pięć nazwanych wartości zamiast dowolnych liczb w każdym pliku.
+
+Live meter rysuje wypełnioną powierzchnię z gradientem zamiast stu dwudziestu pionowych
+kresek, bo przy tej gęstości kreski zlewały się w szarą ścianę. Ocena mowy na liście klipów
+jest pastylką, której kolor niesie tę samą informację co liczba — przy przewijaniu stu klipów
+widać rozkład bez czytania.
 
 ### Kosz „Odrzucone”
 

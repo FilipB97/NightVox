@@ -23,8 +23,6 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,12 +42,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import pl.nightvox.ui.components.NightCard
 import pl.nightvox.ui.components.EmptyState
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.SectionHeader
 import pl.nightvox.ui.components.StatTile
 import pl.nightvox.ui.components.WaveformView
+import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 import pl.nightvox.util.Sharing
 
@@ -127,7 +127,7 @@ fun ClipDetailScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = Spacing.screen),
         ) {
             Text(
                 Format.dateTime(current.clip.startedAt),
@@ -162,51 +162,49 @@ fun ClipDetailScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-                Column(Modifier.padding(16.dp)) {
-                    WaveformView(
-                        peaks = current.peaks,
-                        progress = progress,
-                        modifier = Modifier.fillMaxWidth().height(96.dp),
-                        onSeek = { fraction -> viewModel.seekFraction(fraction) },
+            NightCard {
+                WaveformView(
+                    peaks = current.peaks,
+                    progress = progress,
+                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    onSeek = { fraction -> viewModel.seekFraction(fraction) },
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        Format.clipDuration(if (isThisClip) playback.positionMs.toLong() else 0L),
+                        style = MaterialTheme.typography.labelSmall,
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                    Text(
+                        Format.clipDuration(current.clip.durationMs),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Button(
+                        onClick = { viewModel.playPause(current.clip) },
+                        enabled = current.file.isFile,
+                        shape = CircleShape,
+                        modifier = Modifier.size(64.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                     ) {
-                        Text(
-                            Format.clipDuration(if (isThisClip) playback.positionMs.toLong() else 0L),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                        Text(
-                            Format.clipDuration(current.clip.durationMs),
-                            style = MaterialTheme.typography.labelSmall,
+                        Icon(
+                            if (isThisClip && playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isThisClip && playback.isPlaying) "Pauza" else "Odtwórz",
+                            modifier = Modifier.size(28.dp),
                         )
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Button(
-                            onClick = { viewModel.playPause(current.clip) },
-                            enabled = current.file.isFile,
-                            shape = CircleShape,
-                            modifier = Modifier.size(64.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                        ) {
-                            Icon(
-                                if (isThisClip && playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (isThisClip && playback.isPlaying) "Pauza" else "Odtwórz",
-                                modifier = Modifier.size(28.dp),
-                            )
-                        }
-                        playback.error?.takeIf { isThisClip }?.let {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(start = 16.dp),
-                            )
-                        }
+                    playback.error?.takeIf { isThisClip }?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(start = 16.dp),
+                        )
                     }
                 }
             }
