@@ -18,8 +18,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -41,9 +39,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.nightvox.data.db.ClipEntity
+import pl.nightvox.ui.components.NightCard
 import pl.nightvox.ui.components.EmptyState
 import pl.nightvox.ui.components.SectionHeader
 import pl.nightvox.ui.components.StatTile
+import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 import pl.nightvox.util.Sharing
 
@@ -104,82 +104,77 @@ fun SessionDetailScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = Spacing.screen),
         ) {
             item {
-                Card(
-                    Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        val endedAt = current.session.endedAt ?: System.currentTimeMillis()
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            StatTile("klipy", current.clips.size.toString())
-                            StatTile("odrzucone", current.discarded.size.toString())
-                            StatTile("długość", Format.duration(endedAt - current.session.startedAt))
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            StatTile("tło", Format.db(current.session.noiseFloorDb))
-                            StatTile("przerwania", current.session.interruptions.toString())
-                            StatTile(
-                                "najdłuższa cisza",
-                                Format.duration(
-                                    NightStats.longestQuietGapMs(
-                                        current.allClips,
-                                        current.session.startedAt,
-                                        endedAt,
-                                    ),
+                NightCard(container = MaterialTheme.colorScheme.surfaceContainer) {
+                    val endedAt = current.session.endedAt ?: System.currentTimeMillis()
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        StatTile("klipy", current.clips.size.toString())
+                        StatTile("odrzucone", current.discarded.size.toString())
+                        StatTile("długość", Format.duration(endedAt - current.session.startedAt))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        StatTile("tło", Format.db(current.session.noiseFloorDb))
+                        StatTile("przerwania", current.session.interruptions.toString())
+                        StatTile(
+                            "najdłuższa cisza",
+                            Format.duration(
+                                NightStats.longestQuietGapMs(
+                                    current.allClips,
+                                    current.session.startedAt,
+                                    endedAt,
                                 ),
-                            )
-                        }
-                        Spacer(Modifier.height(16.dp))
-                        SessionTimeline(
-                            startedAt = current.session.startedAt,
-                            endedAt = endedAt,
-                            marks = remember(current) {
-                                current.allClips.map {
-                                    TimelineMark(it.startedAt, it.vadScore, it.isDiscarded)
-                                }
-                            },
+                            ),
                         )
-                        Spacer(Modifier.height(6.dp))
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    SessionTimeline(
+                        startedAt = current.session.startedAt,
+                        endedAt = endedAt,
+                        marks = remember(current) {
+                            current.allClips.map {
+                                TimelineMark(it.startedAt, it.vadScore, it.isDiscarded)
+                            }
+                        },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Wysokość kreski to ocena mowy; przygaszone to odrzucone. " +
+                            "Pionowe linie co godzinę.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
                         Text(
-                            "Wysokość kreski to ocena mowy; przygaszone to odrzucone. " +
-                                "Pionowe linie co godzinę.",
+                            Format.shortTime(current.session.startedAt),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Text(
+                            current.session.endedAt?.let { Format.shortTime(it) } ?: "teraz",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    current.session.endReason?.let {
                         Spacer(Modifier.height(8.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(
-                                Format.shortTime(current.session.startedAt),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                current.session.endedAt?.let { Format.shortTime(it) } ?: "teraz",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        current.session.endReason?.let {
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "Zakończona: ${endReasonLabel(it)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        Text(
+                            "Zakończona: ${endReasonLabel(it)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }

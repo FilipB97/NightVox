@@ -29,14 +29,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.ParameterSlider
+import pl.nightvox.ui.components.ScreenHeader
 import pl.nightvox.ui.components.SectionHeader
+import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 import pl.nightvox.util.Sharing
 import pl.nightvox.util.SystemChecks
@@ -66,14 +67,9 @@ fun SettingsScreen(
             Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = Spacing.screen),
         ) {
-            Text(
-                "Ustawienia",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Light,
-                modifier = Modifier.padding(top = 16.dp),
-            )
+            ScreenHeader(title = "Ustawienia", subtitle = "Parametry bramki, filtru i retencji")
 
             // --- bramka ---
             SectionHeader("Bramka")

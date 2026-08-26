@@ -6,7 +6,16 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -29,8 +39,6 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -42,18 +50,21 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import pl.nightvox.service.RecorderService
 import pl.nightvox.ui.components.LiveLevelMeter
+import pl.nightvox.ui.components.NightCard
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.StatTile
+import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 import pl.nightvox.util.Sharing
 import pl.nightvox.util.SystemChecks
@@ -101,24 +112,40 @@ fun HomeScreen(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = Spacing.screen),
     ) {
+        Spacer(Modifier.height(Spacing.section))
         Text(
-            text = if (state.isRunning) "Sesja trwa" else "NightVox",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Light,
-        )
-        Text(
-            text = if (state.isRunning) {
-                Format.duration(nowMs - state.startedAtMs)
+            text = if (state.isRunning) "SESJA TRWA" else "NIGHTVOX",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (state.isRunning) {
+                MaterialTheme.colorScheme.primary
             } else {
-                "Nagrywa tylko zdarzenia dźwiękowe, nie całą noc"
+                MaterialTheme.colorScheme.onSurfaceVariant
             },
-            style = if (state.isRunning) MaterialTheme.typography.displayLarge else MaterialTheme.typography.bodyMedium,
-            color = if (state.isRunning) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(Spacing.small))
+        if (state.isRunning) {
+            Text(
+                text = Format.duration(nowMs - state.startedAtMs),
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        } else {
+            Text(
+                text = "Nasłuch wyłączony",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Spacer(Modifier.height(Spacing.tiny))
+            Text(
+                text = "Nagrywa tylko zdarzenia dźwiękowe, nie całą noc.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Spacing.section))
 
         StartStopButton(
             isRunning = state.isRunning,
@@ -135,7 +162,7 @@ fun HomeScreen(
             onStop = { RecorderService.stop(context) },
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Spacing.screen))
 
         lastCrash?.let { summary ->
             NoticeCard(
@@ -152,12 +179,12 @@ fun HomeScreen(
                     viewModel.dismissCrash()
                 },
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(Spacing.large))
         }
 
         if (state.isRunning) {
             RunningSessionPanel(state = state, history = history, nowMs = nowMs)
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Spacing.large))
         }
 
         Warnings(
@@ -178,20 +205,30 @@ fun HomeScreen(
             },
         )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Spacing.large))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = onOpenCalibration, modifier = Modifier.weight(1f)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.medium)) {
+            OutlinedButton(
+                onClick = onOpenCalibration,
+                modifier = Modifier.weight(1f).height(48.dp),
+                shape = MaterialTheme.shapes.medium,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
                 Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
+                Spacer(Modifier.size(Spacing.small))
                 Text("Kalibracja")
             }
-            OutlinedButton(onClick = onOpenSettings, modifier = Modifier.weight(1f)) {
+            OutlinedButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.weight(1f).height(48.dp),
+                shape = MaterialTheme.shapes.medium,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
                 Text("Parametry")
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Spacing.section))
     }
 }
 
@@ -204,8 +241,8 @@ private fun StartStopButton(
 ) {
     val colors = if (isRunning) {
         ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.error,
         )
     } else {
         ButtonDefaults.buttonColors()
@@ -214,22 +251,24 @@ private fun StartStopButton(
         onClick = if (isRunning) onStop else onStart,
         modifier = Modifier
             .fillMaxWidth()
-            .height(96.dp),
+            .height(72.dp),
         shape = CircleShape,
         colors = colors,
     ) {
-        if (isRunning) {
-            Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.size(12.dp))
-            Text(
-                if (isRecordingClip) "Nagrywa — zatrzymaj" else "Zatrzymaj",
-                style = MaterialTheme.typography.titleMedium,
-            )
-        } else {
-            Icon(Icons.Filled.Bolt, contentDescription = null, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.size(12.dp))
-            Text("Zacznij nasłuchiwać", style = MaterialTheme.typography.titleMedium)
-        }
+        Icon(
+            if (isRunning) Icons.Filled.Stop else Icons.Filled.Bolt,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.size(Spacing.medium))
+        Text(
+            when {
+                isRunning && isRecordingClip -> "Nagrywa — zatrzymaj"
+                isRunning -> "Zatrzymaj"
+                else -> "Zacznij nasłuchiwać"
+            },
+            style = MaterialTheme.typography.titleMedium,
+        )
     }
 }
 
@@ -239,49 +278,79 @@ private fun RunningSessionPanel(
     history: List<Float>,
     nowMs: Long,
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-        Column(Modifier.padding(16.dp)) {
+    val label = when {
+        state.isSilenced -> "Mikrofon wyciszony przez system"
+        state.isWarmingUp -> "Pomiar tła — ${state.warmupRemainingMs / 1000} s"
+        state.isRecordingClip -> "Nagrywa klip"
+        else -> "Nasłuchuje"
+    }
+    val accent = when {
+        state.isSilenced -> MaterialTheme.colorScheme.error
+        state.isRecordingClip -> MaterialTheme.colorScheme.error
+        state.isWarmingUp -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    NightCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PulsingDot(color = accent, animate = state.isRecordingClip)
+            Spacer(Modifier.width(Spacing.small))
+            Text(label, style = MaterialTheme.typography.titleSmall, color = accent)
+        }
+        Spacer(Modifier.height(Spacing.large))
+
+        LiveLevelMeter(
+            history = history,
+            levelDb = state.levelDb,
+            floorDb = state.floorDb,
+            thresholdDb = state.thresholdDb,
+            isRecording = state.isRecordingClip,
+            capacity = HomeViewModel.HISTORY_CAPACITY,
+        )
+
+        Spacer(Modifier.height(Spacing.large))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            StatTile("klipy", state.clipCount.toString())
+            StatTile("odrzucone", state.discardedCount.toString())
+            StatTile("przerwania", state.interruptions.toString())
+            StatTile("czas", Format.duration(nowMs - state.startedAtMs))
+        }
+        if (state.audioSource.isNotEmpty()) {
+            Spacer(Modifier.height(Spacing.medium))
             Text(
-                text = when {
-                    state.isSilenced -> "Mikrofon wyciszony przez system"
-                    state.isWarmingUp -> "Pomiar tła — ${(state.warmupRemainingMs / 1000)} s"
-                    state.isRecordingClip -> "Nagrywa klip"
-                    else -> "Nasłuchuje"
-                },
-                style = MaterialTheme.typography.titleSmall,
-                color = if (state.isRecordingClip) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                "Źródło: ${state.audioSource}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(12.dp))
-
-            LiveLevelMeter(
-                history = history,
-                levelDb = state.levelDb,
-                floorDb = state.floorDb,
-                thresholdDb = state.thresholdDb,
-                isRecording = state.isRecordingClip,
-                capacity = HomeViewModel.HISTORY_CAPACITY,
-            )
-
-            Spacer(Modifier.height(16.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                StatTile("klipy", state.clipCount.toString())
-                StatTile("odrzucone", state.discardedCount.toString())
-                StatTile("przerwania", state.interruptions.toString())
-                StatTile("czas", Format.duration(nowMs - state.startedAtMs))
-            }
-            if (state.audioSource.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Źródło: ${state.audioSource}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
+}
+
+/** Kropka statusu. Pulsuje tylko wtedy, gdy naprawdę leci zapis — inaczej to ozdóbka. */
+@Composable
+private fun PulsingDot(color: Color, animate: Boolean) {
+    val alpha = if (animate) {
+        val transition = rememberInfiniteTransition(label = "dot")
+        transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.25f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "dotAlpha",
+        ).value
+    } else {
+        1f
+    }
+    Box(
+        Modifier
+            .size(8.dp)
+            .background(color.copy(alpha = alpha), CircleShape),
+    )
 }
 
 @Composable
@@ -293,7 +362,7 @@ private fun Warnings(
     environment: pl.nightvox.util.EnvironmentStatus,
     onRequestPermissions: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
         if (!hasMicPermission) {
             NoticeCard(
                 icon = Icons.Filled.MicOff,

@@ -15,8 +15,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,11 +32,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.nightvox.data.NightVoxSettings
+import pl.nightvox.ui.components.NightCard
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.ParameterSlider
 import pl.nightvox.ui.components.SectionHeader
 import pl.nightvox.ui.components.StatTile
+import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,7 +69,7 @@ fun CalibrationScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = Spacing.screen),
         ) {
             Text(
                 "Zmierz realne tło w sypialni zamiast zgadywać próg. Zrób to w warunkach nocnych: " +
@@ -190,106 +190,98 @@ private fun MeasuringCard(
     levelDb: Float,
     onCancel: () -> Unit,
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-        Column(Modifier.padding(16.dp)) {
-            Text(caption, style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "${(remainingMs / 1000) + 1} s",
-                style = MaterialTheme.typography.displayLarge,
-            )
-            Spacer(Modifier.height(12.dp))
-            LinearProgressIndicator(
-                progress = { 1f - (remainingMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Poziom: ${Format.db(levelDb)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onCancel) { Text("Przerwij") }
-        }
+    NightCard {
+        Text(caption, style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "${(remainingMs / 1000) + 1} s",
+            style = MaterialTheme.typography.displayLarge,
+        )
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(
+            progress = { 1f - (remainingMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Poziom: ${Format.db(levelDb)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onCancel) { Text("Przerwij") }
     }
 }
 
 @Composable
 private fun ResultCard(state: CalibrationState) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-        Column(Modifier.padding(16.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                StatTile("tło (mediana)", Format.db(state.measuredFloorDb))
-                StatTile("cisza p95", Format.db(state.quietPercentileDb))
-                StatTile("próg", Format.db(state.thresholdDb))
-            }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Propozycja bierze rozrzut ciszy (p95 − mediana) i dokłada 6 dB zapasu. " +
-                    "Zbyt niski próg to kilkaset klipów z trzaskami, zbyt wysoki — cicha noc mimo mówienia.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    NightCard {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            StatTile("tło (mediana)", Format.db(state.measuredFloorDb))
+            StatTile("cisza p95", Format.db(state.quietPercentileDb))
+            StatTile("próg", Format.db(state.thresholdDb))
         }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Propozycja bierze rozrzut ciszy (p95 − mediana) i dokłada 6 dB zapasu. " +
+                "Zbyt niski próg to kilkaset klipów z trzaskami, zbyt wysoki — cicha noc mimo mówienia.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
 @Composable
 private fun VerificationCard(state: CalibrationState) {
     val ok = state.wouldTrigger
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (ok) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.errorContainer
-            },
-        ),
+    NightCard(
+        container = if (ok) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.errorContainer
+        },
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (ok) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
-                    contentDescription = null,
-                )
-                Text(
-                    text = if (ok) "Ten próg złapałby tę wypowiedź" else "Ten próg by NIE zadziałał",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(start = 12.dp),
-                )
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (ok) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                contentDescription = null,
+            )
+            Text(
+                text = if (ok) "Ten próg złapałby tę wypowiedź" else "Ten próg by NIE zadziałał",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            StatTile("szczyt mowy", Format.db(state.speechPeakDb))
+            StatTile("średnia", Format.db(state.speechMeanDb))
+            StatTile("ramek nad progiem", state.longestRunFrames.toString())
+            StatTile("ocena mowy", state.speechScore?.let { Format.score(it) } ?: "—")
+        }
+        state.speechScore?.let { score ->
             Spacer(Modifier.height(12.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                StatTile("szczyt mowy", Format.db(state.speechPeakDb))
-                StatTile("średnia", Format.db(state.speechMeanDb))
-                StatTile("ramek nad progiem", state.longestRunFrames.toString())
-                StatTile("ocena mowy", state.speechScore?.let { Format.score(it) } ?: "—")
-            }
-            state.speechScore?.let { score ->
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Filtr mowy ocenił tę wypowiedź na ${Format.score(score)}. Próg filtru ustaw " +
-                        "wyraźnie poniżej tej wartości — inaczej wytnie dokładnie to, co chcesz łapać. " +
-                        "Klipy z samym oddechem dostają zwykle poniżej 0,30.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (!ok) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Obniż próg suwakiem poniżej i powtórz test. Jeśli nawet 6 dB nie wystarcza, " +
-                        "problem jest w odległości albo w tym, że telefon leży mikrofonem do materaca.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+            Text(
+                "Filtr mowy ocenił tę wypowiedź na ${Format.score(score)}. Próg filtru ustaw " +
+                    "wyraźnie poniżej tej wartości — inaczej wytnie dokładnie to, co chcesz łapać. " +
+                    "Klipy z samym oddechem dostają zwykle poniżej 0,30.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (!ok) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Obniż próg suwakiem poniżej i powtórz test. Jeśli nawet 6 dB nie wystarcza, " +
+                    "problem jest w odległości albo w tym, że telefon leży mikrofonem do materaca.",
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

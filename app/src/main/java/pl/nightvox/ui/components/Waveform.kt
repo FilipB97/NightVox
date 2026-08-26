@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 
 /**
@@ -66,7 +67,8 @@ fun WaveformView(
                 color = if (column < playedColumns) playedColor else remainingColor,
                 start = Offset(x, centerY - amplitude),
                 end = Offset(x, centerY + amplitude),
-                strokeWidth = (size.width / columns) * 0.6f,
+                strokeWidth = (size.width / columns) * 0.55f,
+                cap = StrokeCap.Round,
             )
         }
     }
