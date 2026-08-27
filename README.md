@@ -120,6 +120,7 @@ z planu:
 | `przecinek w nazwie pliku jest cytowany` | eksport CSV nie rozjeżdża się na dziwnej nazwie |
 | `miernik nie wywala sie na brzegowej historii` | Canvas: pusta i jednoelementowa historia poziomu |
 | `obwiednia nie wywala sie bez danych` | Canvas: klip bez pliku `.peaks` i z jednym kubełkiem |
+| `powitanie nie wraca po zresetowaniu ustawien` | „Przywróć domyślne" nie cofa na ekran powitalny |
 | `szum o energii ponizej 80 hz nie jest tonem 400 hz` | regresja: oddech brany za dźwięk dźwięczny |
 | `podloga progu odcina zdarzenia zbyt ciche…` | `minTriggerDb` naprawdę ogranicza próg od dołu |
 | `tlo wokol zdarzenia nie zmienia oceny` | pre-roll i hangover nie wpływają na ocenę mowy |
@@ -320,6 +321,34 @@ Live meter rysuje wypełnioną powierzchnię z gradientem zamiast stu dwudziestu
 kresek, bo przy tej gęstości kreski zlewały się w szarą ścianę. Ocena mowy na liście klipów
 jest pastylką, której kolor niesie tę samą informację co liczba — przy przewijaniu stu klipów
 widać rozkład bez czytania.
+
+### Warstwa odczuć
+
+Rzeczy, które nie zmieniają tego, co aplikacja robi, tylko to, jak się jej używa:
+
+- **Haptyka.** Potwierdzenie brzmi inaczej niż odmowa, a przeskok suwaka to cichy tik.
+  Compose zna tylko dwa rodzaje wibracji, więc `Haptics` opakowuje stałe z `View`. Wszystko
+  przechodzi przez systemowe ustawienie haptyki — kto ją wyłączył, nic nie poczuje.
+- **Ruch tam, gdzie coś się zmienia.** Licznik czasu i liczby w kafelkach wjeżdżają od dołu:
+  tykają co sekundę i skok cyfry czyta się jak usterka, a nie jak nowe zdarzenie. Linie tła i
+  progu na mierniku pełzają przez noc o ułamki decybela, więc są animowane — bez tego drgały
+  skokowo przy każdym odświeżeniu.
+- **Przejście współdzielone.** Tarcza odtwarzania przepływa z wiersza listy na przycisk w
+  szczegółach klipu, zamiast zniknąć i pojawić się gdzie indziej. Zakresy idą przez
+  `CompositionLocal`, żeby nie przepychać dwóch parametrów przez sygnatury wszystkich ekranów
+  po drodze — i żeby w testach komponentów modyfikator po prostu nic nie robił.
+- **Gesty na liście klipów.** W bok: ulubione albo do kosza. Jedno i drugie odwracalne, bo
+  kosz trzyma plik przez kilka dni; nieodwracalne kasowanie zostało tylko w szczegółach klipu.
+- **Własny krój.** Inter w wersji zmiennej, przycięty `fonttools` do znaków, których ta
+  aplikacja używa: 880 kB → 154 kB, z zachowaną osią grubości i funkcją `tnum`.
+
+### Pierwsze uruchomienie
+
+Trzy kroki w kolejności, w której naprawdę trzeba je zrobić: uprawnienia → kalibracja →
+bateria i start. Wcześniej nowy użytkownik dostawał ekran główny ze stosem kart-ostrzeżeń i
+musiał sam zgadnąć, od czego zacząć. To bolało podwójnie, odkąd próg ma bezwzględną podłogę:
+bez kalibracji aplikacja albo nie nagra nic, albo nagra każde skrzypnięcie łóżka, a jedno i
+drugie wygląda jak awaria.
 
 ### Kosz „Odrzucone”
 

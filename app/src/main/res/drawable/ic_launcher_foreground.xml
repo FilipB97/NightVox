@@ -6,21 +6,21 @@
     android:viewportHeight="108">
     <!-- Waveform: cichy sygnał w środku nocy. -->
     <path
-        android:fillColor="#FF8AB4FF"
+        android:fillColor="#FFA6C0FF"
         android:pathData="M35,50h3v8h-3z" />
     <path
-        android:fillColor="#FF8AB4FF"
+        android:fillColor="#FFA6C0FF"
         android:pathData="M42,44h3v20h-3z" />
     <path
-        android:fillColor="#FFB9C7FF"
+        android:fillColor="#FFD9E4FF"
         android:pathData="M49,34h3v40h-3z" />
     <path
-        android:fillColor="#FFB9C7FF"
+        android:fillColor="#FFD9E4FF"
         android:pathData="M56,41h3v26h-3z" />
     <path
-        android:fillColor="#FF8AB4FF"
+        android:fillColor="#FFA6C0FF"
         android:pathData="M63,47h3v14h-3z" />
     <path
-        android:fillColor="#FF8AB4FF"
+        android:fillColor="#FFA6C0FF"
         android:pathData="M70,51h3v6h-3z" />
 </vector>

@@ -2,6 +2,7 @@ package pl.nightvox.ui.clip
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +18,6 @@ import kotlinx.coroutines.launch
 import pl.nightvox.AppContainer
 import pl.nightvox.data.db.ClipEntity
 import pl.nightvox.encode.Waveform
-import java.io.File
 
 enum class ClipFilter { ALL, FAVORITES, DISCARDED }
 
@@ -157,6 +157,14 @@ class ClipsViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             repository.restoreDiscarded(clip)
             _message.value = "Klip przywrócony"
+        }
+    }
+
+    /** Gest na liście: klip do kosza, bez kasowania pliku — da się go potem przywrócić. */
+    fun moveToTrash(clip: ClipEntity) {
+        viewModelScope.launch {
+            repository.moveToDiscarded(clip)
+            _message.value = "Klip w koszu"
         }
     }
 

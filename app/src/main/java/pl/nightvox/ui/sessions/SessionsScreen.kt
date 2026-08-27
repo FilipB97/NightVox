@@ -47,7 +47,11 @@ fun SessionsScreen(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
                 items(sessions, key = { it.id }) { session ->
-                    SessionRow(session = session, onClick = { onOpenSession(session.id) })
+                    SessionRow(
+                        session = session,
+                        modifier = Modifier.animateItem(),
+                        onClick = { onOpenSession(session.id) },
+                    )
                 }
                 item { Spacer(Modifier.height(Spacing.section)) }
             }
@@ -56,8 +60,12 @@ fun SessionsScreen(
 }
 
 @Composable
-private fun SessionRow(session: SessionWithStats, onClick: () -> Unit) {
-    NightCard(modifier = Modifier.clickable(onClick = onClick)) {
+private fun SessionRow(
+    session: SessionWithStats,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    NightCard(modifier = modifier.clickable(onClick = onClick)) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,

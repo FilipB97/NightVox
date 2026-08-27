@@ -42,13 +42,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import pl.nightvox.ui.components.NightCard
 import pl.nightvox.ui.components.EmptyState
+import pl.nightvox.ui.components.NightCard
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.SectionHeader
 import pl.nightvox.ui.components.StatTile
 import pl.nightvox.ui.components.WaveformView
+import pl.nightvox.ui.components.clipPlayKey
+import pl.nightvox.ui.components.rememberHaptics
+import pl.nightvox.ui.components.sharedWith
 import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 import pl.nightvox.util.Sharing
@@ -65,6 +68,7 @@ fun ClipDetailScreen(
     val detail by viewModel.selected.collectAsStateWithLifecycle()
     val playback by viewModel.player.state.collectAsStateWithLifecycle()
     val neighbours by viewModel.neighbours.collectAsStateWithLifecycle()
+    val haptics = rememberHaptics()
     var confirmDelete by remember { mutableStateOf(false) }
 
     LaunchedEffect(clipId) { viewModel.select(clipId) }
@@ -80,7 +84,7 @@ fun ClipDetailScreen(
                 },
                 actions = {
                     detail?.let { d ->
-                        IconButton(onClick = { viewModel.toggleFavorite(d.clip) }) {
+                        IconButton(onClick = { haptics.tick(); viewModel.toggleFavorite(d.clip) }) {
                             Icon(
                                 if (d.clip.isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
                                 contentDescription = "Ulubiony",
@@ -97,7 +101,7 @@ fun ClipDetailScreen(
                         ) {
                             Icon(Icons.Filled.IosShare, contentDescription = "Udostępnij")
                         }
-                        IconButton(onClick = { confirmDelete = true }) {
+                        IconButton(onClick = { haptics.reject(); confirmDelete = true }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Usuń")
                         }
                     }
@@ -149,6 +153,8 @@ fun ClipDetailScreen(
                             "Tak wygląda oddech (szum szerokopasmowy bez okresowości) i chrapanie " +
                             "(buczenie poniżej 90 Hz). Odsłuchaj: jeśli to jednak wypowiedź, obniż próg mowy " +
                             "w ustawieniach i przywróć klip."
+                        "MANUAL" -> "Odłożony do kosza ręcznie, gestem na liście. Plik został — " +
+                            "kosz ma własną, krótszą retencję, więc jest jeszcze czas, żeby zmienić zdanie."
                         "LOW_VAD" -> "Bramka przepuściła, ale Silero VAD nie uznał tego za mowę " +
                             "(${current.clip.vadScore?.let { Format.score(it) } ?: "—"}). " +
                             "Wpis z wcześniejszej wersji aplikacji."
@@ -156,7 +162,7 @@ fun ClipDetailScreen(
                     },
                     tone = NoticeTone.WARNING,
                     actionLabel = "Przywróć do klipów",
-                    onAction = { viewModel.restore(current.clip) },
+                    onAction = { haptics.confirm(); viewModel.restore(current.clip) },
                 )
             }
 
@@ -186,10 +192,12 @@ fun ClipDetailScreen(
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Button(
-                        onClick = { viewModel.playPause(current.clip) },
+                        onClick = { haptics.tick(); viewModel.playPause(current.clip) },
                         enabled = current.file.isFile,
                         shape = CircleShape,
-                        modifier = Modifier.size(64.dp),
+                        modifier = Modifier
+                            .sharedWith(clipPlayKey(current.clip.id))
+                            .size(64.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                     ) {
                         Icon(
@@ -219,7 +227,7 @@ fun ClipDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(
-                        onClick = { position.previousId?.let(onOpenClip) },
+                        onClick = { haptics.tick(); position.previousId?.let(onOpenClip) },
                         enabled = position.previousId != null,
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
@@ -232,7 +240,7 @@ fun ClipDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     TextButton(
-                        onClick = { position.nextId?.let(onOpenClip) },
+                        onClick = { haptics.tick(); position.nextId?.let(onOpenClip) },
                         enabled = position.nextId != null,
                     ) {
                         Text("Następny")

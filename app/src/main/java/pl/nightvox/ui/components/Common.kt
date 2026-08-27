@@ -1,5 +1,11 @@
 package pl.nightvox.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -160,6 +166,7 @@ fun ParameterSlider(
     steps: Int = 0,
     description: String? = null,
 ) {
+    val haptics = rememberHaptics()
     Column(modifier.padding(vertical = Spacing.small)) {
         Row(
             Modifier.fillMaxWidth(),
@@ -176,7 +183,11 @@ fun ParameterSlider(
         }
         Slider(
             value = value,
-            onValueChange = onValueChange,
+            onValueChange = {
+                // Suwaki są tu skokowe, więc tik odpowiada realnej zmianie wartości, nie ruchowi palca.
+                if (it != value) haptics.tick()
+                onValueChange(it)
+            },
             valueRange = range,
             steps = steps,
             colors = SliderDefaults.colors(
@@ -236,15 +247,29 @@ fun EmptyState(
     }
 }
 
-/** Liczba i jej podpis. Wartość dużą czcionką tabelaryczną, podpis wersalikami. */
+/**
+ * Liczba i jej podpis. Wartość dużą czcionką tabelaryczną, podpis wersalikami.
+ *
+ * Zmiana wartości wjeżdża od dołu zamiast przeskakiwać: liczniki na ekranie głównym tykają w
+ * trakcie sesji i skok cyfry czyta się jak usterka, a nie jak nowe zdarzenie.
+ */
 @Composable
 fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier) {
-        Text(
-            value,
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        AnimatedContent(
+            targetState = value,
+            transitionSpec = {
+                (slideInVertically { height -> height / 2 } + fadeIn()) togetherWith
+                    (slideOutVertically { height -> -height / 2 } + fadeOut())
+            },
+            label = "statTile",
+        ) { shown ->
+            Text(
+                shown,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
         Spacer(Modifier.height(2.dp))
         Text(
             label.uppercase(),

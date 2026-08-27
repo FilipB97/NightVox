@@ -3,12 +3,17 @@ package pl.nightvox.ui
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
@@ -23,10 +28,12 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -40,8 +47,12 @@ import pl.nightvox.ui.calibration.CalibrationViewModel
 import pl.nightvox.ui.clip.ClipDetailScreen
 import pl.nightvox.ui.clip.ClipsScreen
 import pl.nightvox.ui.clip.ClipsViewModel
+import pl.nightvox.ui.components.LocalSharedScopes
+import pl.nightvox.ui.components.SharedScopes
 import pl.nightvox.ui.home.HomeScreen
 import pl.nightvox.ui.home.HomeViewModel
+import pl.nightvox.ui.onboarding.OnboardingScreen
+import pl.nightvox.ui.onboarding.OnboardingViewModel
 import pl.nightvox.ui.sessions.SessionDetailScreen
 import pl.nightvox.ui.sessions.SessionsScreen
 import pl.nightvox.ui.sessions.SessionsViewModel
@@ -54,6 +65,7 @@ object Routes {
     const val CLIPS = "clips"
     const val SETTINGS = "settings"
     const val CALIBRATION = "calibration"
+    const val ONBOARDING = "onboarding"
     const val SESSION_DETAIL = "session/{sessionId}"
     const val CLIP_DETAIL = "clip/{clipId}"
 
@@ -96,8 +108,19 @@ private val tabs = listOf(
     TabItem(Routes.SETTINGS, "Ustawienia", Icons.Filled.Settings),
 )
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun NightVoxRoot() {
+    val onboarding: OnboardingViewModel = viewModel(factory = NightVoxViewModelFactory)
+    val onboardingCompleted by onboarding.completed.collectAsStateWithLifecycle()
+
+    // Trasa startowa jest ustalana raz, przy pierwszej kompozycji, więc czekamy na DataStore
+    // zamiast zgadywać. Splash ma dokładnie ten sam kolor, więc nie widać tu żadnego skoku.
+    val completed = onboardingCompleted ?: run {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+        return
+    }
+
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -130,15 +153,28 @@ fun NightVoxRoot() {
             }
         },
     ) { padding ->
+        SharedTransitionLayout {
         NavHost(
             navController = navController,
-            startDestination = Routes.HOME,
+            startDestination = if (completed) Routes.HOME else Routes.ONBOARDING,
             modifier = Modifier.padding(padding),
             enterTransition = { tabEnter },
             exitTransition = { tabExit },
             popEnterTransition = { tabEnter },
             popExitTransition = { tabExit },
         ) {
+            composable(Routes.ONBOARDING) {
+                OnboardingScreen(
+                    onOpenCalibration = { navController.navigate(Routes.CALIBRATION) },
+                    onFinish = {
+                        onboarding.complete {
+                            navController.navigate(Routes.HOME) {
+                                popUpTo(Routes.ONBOARDING) { inclusive = true }
+                            }
+                        }
+                    },
+                )
+            }
             composable(Routes.HOME) {
                 val vm: HomeViewModel = viewModel(factory = NightVoxViewModelFactory)
                 HomeScreen(
@@ -156,10 +192,14 @@ fun NightVoxRoot() {
             }
             composable(Routes.CLIPS) {
                 val vm: ClipsViewModel = viewModel(factory = NightVoxViewModelFactory)
+                CompositionLocalProvider(
+                    LocalSharedScopes provides SharedScopes(this@SharedTransitionLayout, this@composable),
+                ) {
                 ClipsScreen(
                     viewModel = vm,
                     onOpenClip = { navController.navigate(Routes.clipDetail(it)) },
                 )
+                }
             }
             composable(Routes.SETTINGS) {
                 val vm: SettingsViewModel = viewModel(factory = NightVoxViewModelFactory)
@@ -203,6 +243,9 @@ fun NightVoxRoot() {
             ) { entry ->
                 val clipId = entry.arguments?.getString("clipId").orEmpty()
                 val vm: ClipsViewModel = viewModel(factory = NightVoxViewModelFactory)
+                CompositionLocalProvider(
+                    LocalSharedScopes provides SharedScopes(this@SharedTransitionLayout, this@composable),
+                ) {
                 ClipDetailScreen(
                     clipId = clipId,
                     viewModel = vm,
@@ -215,7 +258,9 @@ fun NightVoxRoot() {
                         }
                     },
                 )
+                }
             }
+        }
         }
     }
 }

@@ -1,22 +1,21 @@
 package pl.nightvox.ui.theme
 
-import android.app.Activity
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
+import pl.nightvox.R
 
 /**
  * Jedna paleta, zawsze ciemna — także wtedy, gdy telefon jest w trybie jasnym.
@@ -71,6 +70,28 @@ private val NightColors = darkColorScheme(
 )
 
 /**
+ * Inter w wersji zmiennej, przycięty do znaków, których ta aplikacja naprawdę używa.
+ *
+ * Krój systemowy jest na każdym telefonie inny, więc aplikacja nie ma własnego charakteru
+ * pisma i na części urządzeń rozjeżdżają się odstępy. Pełny plik waży 880 kB; po obcięciu do
+ * łaciny z polskimi znakami i garści symboli zostaje 154 kB, z zachowaną osią grubości i —
+ * co tu ważniejsze — funkcją `tnum`. Licencja SIL OFL leży w `assets/inter_OFL.txt`.
+ */
+private val Inter = FontFamily(
+    interFont(FontWeight.Light, 300),
+    interFont(FontWeight.Normal, 400),
+    interFont(FontWeight.Medium, 500),
+    interFont(FontWeight.SemiBold, 600),
+)
+
+@OptIn(ExperimentalTextApi::class)
+private fun interFont(weight: FontWeight, axis: Int) = Font(
+    resId = R.font.inter_variable,
+    weight = weight,
+    variationSettings = FontVariation.Settings(FontVariation.weight(axis)),
+)
+
+/**
  * Cyfry w tabelarycznej szerokości.
  *
  * Poziom, próg i licznik czasu odświeżają się kilka razy na sekundę. Bez `tnum` każda zmiana
@@ -78,10 +99,9 @@ private val NightColors = darkColorScheme(
  */
 private const val TABULAR = "tnum"
 
-private val NightTypography = Typography().let { base ->
+private val NightTypography = Typography().withFamily(Inter).let { base ->
     base.copy(
         displayLarge = base.displayLarge.copy(
-            fontFamily = FontFamily.Default,
             fontWeight = FontWeight.Light,
             fontSize = 54.sp,
             lineHeight = 60.sp,
@@ -108,7 +128,7 @@ private val NightTypography = Typography().let { base ->
         // Podpisy sekcji i kafelków — wersaliki z rozstrzeleniem czytają się jak etykieta,
         // a nie jak urwane zdanie.
         labelSmall = TextStyle(
-            fontFamily = FontFamily.Default,
+            fontFamily = Inter,
             fontWeight = FontWeight.Medium,
             fontSize = 11.sp,
             lineHeight = 15.sp,
@@ -116,6 +136,25 @@ private val NightTypography = Typography().let { base ->
         ),
     )
 }
+
+/** Podmienia krój we wszystkich stylach naraz — Material 3 nie ma już `defaultFontFamily`. */
+private fun Typography.withFamily(family: FontFamily) = Typography(
+    displayLarge = displayLarge.copy(fontFamily = family),
+    displayMedium = displayMedium.copy(fontFamily = family),
+    displaySmall = displaySmall.copy(fontFamily = family),
+    headlineLarge = headlineLarge.copy(fontFamily = family),
+    headlineMedium = headlineMedium.copy(fontFamily = family),
+    headlineSmall = headlineSmall.copy(fontFamily = family),
+    titleLarge = titleLarge.copy(fontFamily = family),
+    titleMedium = titleMedium.copy(fontFamily = family),
+    titleSmall = titleSmall.copy(fontFamily = family),
+    bodyLarge = bodyLarge.copy(fontFamily = family),
+    bodyMedium = bodyMedium.copy(fontFamily = family),
+    bodySmall = bodySmall.copy(fontFamily = family),
+    labelLarge = labelLarge.copy(fontFamily = family),
+    labelMedium = labelMedium.copy(fontFamily = family),
+    labelSmall = labelSmall.copy(fontFamily = family),
+)
 
 /** Miękkie, ale nie owalne: 20 dp na kartach, mniej na drobnicy. */
 private val NightShapes = Shapes(
@@ -128,20 +167,9 @@ private val NightShapes = Shapes(
 
 @Composable
 fun NightVoxTheme(content: @Composable () -> Unit) {
-    val view = LocalView.current
-
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as Activity).window
-            window.statusBarColor = NightColors.background.toArgb()
-            window.navigationBarColor = NightColors.background.toArgb()
-            WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = false
-                isAppearanceLightNavigationBars = false
-            }
-        }
-    }
-
+    // Kolorów pasków systemowych nie ustawiamy: `enableEdgeToEdge()` w MainActivity rysuje
+    // treść pod nimi, a `statusBarColor`/`navigationBarColor` są od Androida 15 wycofane i
+    // i tak by to zepsuły, malując na wierzchu nieprzezroczysty prostokąt.
     MaterialTheme(
         colorScheme = NightColors,
         typography = NightTypography,

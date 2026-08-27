@@ -2,8 +2,8 @@ package pl.nightvox.ui.clip
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.GraphicEq
@@ -30,19 +31,27 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.nightvox.ui.components.EmptyState
 import pl.nightvox.ui.components.ScreenHeader
+import pl.nightvox.ui.components.clipPlayKey
+import pl.nightvox.ui.components.rememberHaptics
+import pl.nightvox.ui.components.sharedWith
 import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 
@@ -58,6 +67,7 @@ fun ClipsScreen(
     val discardedCount by viewModel.discardedCount.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val haptics = rememberHaptics()
 
     LaunchedEffect(message) {
         message?.let {
@@ -77,7 +87,7 @@ fun ClipsScreen(
                 },
                 trailing = {
                     if (filter == ClipFilter.DISCARDED && clips.isNotEmpty()) {
-                        IconButton(onClick = viewModel::clearDiscarded) {
+                        IconButton(onClick = { haptics.reject(); viewModel.clearDiscarded() }) {
                             Icon(Icons.Filled.DeleteSweep, contentDescription = "Opróżnij kosz")
                         }
                     }
@@ -87,17 +97,17 @@ fun ClipsScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
                 FilterChip(
                     selected = filter == ClipFilter.ALL,
-                    onClick = { viewModel.setFilter(ClipFilter.ALL) },
+                    onClick = { haptics.tick(); viewModel.setFilter(ClipFilter.ALL) },
                     label = { Text("Wszystkie") },
                 )
                 FilterChip(
                     selected = filter == ClipFilter.FAVORITES,
-                    onClick = { viewModel.setFilter(ClipFilter.FAVORITES) },
+                    onClick = { haptics.tick(); viewModel.setFilter(ClipFilter.FAVORITES) },
                     label = { Text("Ulubione") },
                 )
                 FilterChip(
                     selected = filter == ClipFilter.DISCARDED,
-                    onClick = { viewModel.setFilter(ClipFilter.DISCARDED) },
+                    onClick = { haptics.tick(); viewModel.setFilter(ClipFilter.DISCARDED) },
                     label = { Text(if (discardedCount > 0) "Odrzucone ($discardedCount)" else "Odrzucone") },
                 )
             }
@@ -113,12 +123,12 @@ fun ClipsScreen(
                 )
                 FilterChip(
                     selected = sort == ClipSort.NEWEST,
-                    onClick = { viewModel.setSort(ClipSort.NEWEST) },
+                    onClick = { haptics.tick(); viewModel.setSort(ClipSort.NEWEST) },
                     label = { Text("Najnowsze") },
                 )
                 FilterChip(
                     selected = sort == ClipSort.SCORE,
-                    onClick = { viewModel.setSort(ClipSort.SCORE) },
+                    onClick = { haptics.tick(); viewModel.setSort(ClipSort.SCORE) },
                     label = { Text("Wg oceny mowy") },
                 )
             }
@@ -164,27 +174,25 @@ fun ClipsScreen(
                             NightHeader(night = night, count = items.size)
                         }
                         items(items, key = { it.clip.id }) { item ->
-                            ClipListRow(
+                            SwipeableClipRow(
+                                modifier = Modifier.animateItem(),
                                 item = item,
-                                showRestore = filter == ClipFilter.DISCARDED,
+                                inTrash = filter == ClipFilter.DISCARDED,
                                 showDate = false,
-                                onClick = { onOpenClip(item.clip.id) },
-                                onPlay = { viewModel.playPause(item.clip) },
-                                onToggleFavorite = { viewModel.toggleFavorite(item.clip) },
-                                onRestore = { viewModel.restore(item.clip) },
+                                viewModel = viewModel,
+                                onOpenClip = onOpenClip,
                             )
                         }
                     }
                 } else {
                     items(clips, key = { it.clip.id }) { item ->
-                        ClipListRow(
+                        SwipeableClipRow(
+                            modifier = Modifier.animateItem(),
                             item = item,
-                            showRestore = filter == ClipFilter.DISCARDED,
+                            inTrash = filter == ClipFilter.DISCARDED,
                             showDate = true,
-                            onClick = { onOpenClip(item.clip.id) },
-                            onPlay = { viewModel.playPause(item.clip) },
-                            onToggleFavorite = { viewModel.toggleFavorite(item.clip) },
-                            onRestore = { viewModel.restore(item.clip) },
+                            viewModel = viewModel,
+                            onOpenClip = onOpenClip,
                         )
                     }
                 }
@@ -217,8 +225,119 @@ private fun NightHeader(night: String, count: Int) {
     }
 }
 
+/**
+ * Wiersz klipu z gestami.
+ *
+ * Przegląd nocy to sto klipów, a dotąd każda decyzja wymagała wejścia w szczegóły i powrotu.
+ * W bok: ulubione albo do kosza — jedno i drugie odwracalne, bo kosz trzyma plik przez kilka
+ * dni. Nic tu nie kasuje nieodwracalnie; na to jest osobny przycisk w szczegółach klipu.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableClipRow(
+    item: ClipListItem,
+    inTrash: Boolean,
+    showDate: Boolean,
+    viewModel: ClipsViewModel,
+    onOpenClip: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = rememberHaptics()
+    val state = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    haptics.tick()
+                    viewModel.toggleFavorite(item.clip)
+                    // false = wiersz wraca na miejsce; gwiazdka to przełącznik, nie usunięcie.
+                    false
+                }
+
+                SwipeToDismissBoxValue.EndToStart -> {
+                    if (inTrash) {
+                        haptics.confirm()
+                        viewModel.restore(item.clip)
+                    } else {
+                        haptics.reject()
+                        viewModel.moveToTrash(item.clip)
+                    }
+                    // true = wiersz znika, bo i tak wypada z bieżącej listy.
+                    true
+                }
+
+                SwipeToDismissBoxValue.Settled -> false
+            }
+        },
+    )
+
+    SwipeToDismissBox(
+        state = state,
+        modifier = modifier,
+        enableDismissFromStartToEnd = !inTrash,
+        backgroundContent = { SwipeBackground(state.dismissDirection, inTrash, item.clip.isFavorite) },
+    ) {
+        ClipListRow(
+            // Tło pod wierszem, żeby spod niego nie prześwitywała warstwa gestu.
+            modifier = Modifier.background(MaterialTheme.colorScheme.background),
+            item = item,
+            showRestore = inTrash,
+            showDate = showDate,
+            onClick = { onOpenClip(item.clip.id) },
+            onPlay = { viewModel.playPause(item.clip) },
+            onToggleFavorite = { haptics.tick(); viewModel.toggleFavorite(item.clip) },
+            onRestore = { haptics.confirm(); viewModel.restore(item.clip) },
+        )
+    }
+}
+
+@Composable
+private fun SwipeBackground(direction: SwipeToDismissBoxValue, inTrash: Boolean, isFavorite: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    val (container, icon, label, alignment) = when (direction) {
+        SwipeToDismissBoxValue.StartToEnd -> SwipeLook(
+            scheme.tertiaryContainer,
+            if (isFavorite) Icons.Filled.StarBorder else Icons.Filled.Star,
+            if (isFavorite) "Usuń z ulubionych" else "Ulubione",
+            Alignment.CenterStart,
+        )
+
+        SwipeToDismissBoxValue.EndToStart -> if (inTrash) {
+            SwipeLook(scheme.secondaryContainer, Icons.Filled.Restore, "Przywróć", Alignment.CenterEnd)
+        } else {
+            SwipeLook(scheme.errorContainer, Icons.Filled.DeleteSweep, "Do kosza", Alignment.CenterEnd)
+        }
+
+        SwipeToDismissBoxValue.Settled -> SwipeLook(scheme.background, null, "", Alignment.Center)
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(container)
+            .padding(horizontal = Spacing.screen),
+        contentAlignment = alignment,
+    ) {
+        if (icon != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(Spacing.small))
+                Text(label, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+private data class SwipeLook(
+    val container: Color,
+    val icon: ImageVector?,
+    val label: String,
+    val alignment: Alignment,
+)
+
 @Composable
 private fun ClipListRow(
+    modifier: Modifier = Modifier,
     item: ClipListItem,
     showRestore: Boolean,
     /** Przy sortowaniu wg oceny nie ma nagłówków nocy, więc data musi być w wierszu. */
@@ -229,14 +348,14 @@ private fun ClipListRow(
     onRestore: () -> Unit,
 ) {
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)
-            .padding(vertical = Spacing.medium, horizontal = Spacing.small),
+            .padding(vertical = Spacing.small, horizontal = Spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlayDisc(enabled = item.fileExists, onClick = onPlay)
+        PlayDisc(clipId = item.clip.id, enabled = item.fileExists, onClick = onPlay)
 
         Column(Modifier.weight(1f).padding(start = Spacing.medium)) {
             ClipRowTitle(item = item, showDate = showDate)
@@ -271,10 +390,12 @@ private fun ClipListRow(
 }
 
 @Composable
-private fun PlayDisc(enabled: Boolean, onClick: () -> Unit) {
+private fun PlayDisc(clipId: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
-            .size(40.dp)
+            .sharedWith(clipPlayKey(clipId))
+            .minimumInteractiveComponentSize()
+            .size(44.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .clickable(enabled = enabled, onClick = onClick),

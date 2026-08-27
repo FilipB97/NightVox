@@ -52,11 +52,13 @@ class SettingsStore(private val context: Context) {
             prefs[Keys.KEEP_SCREEN_ON] = updated.keepScreenOn
             prefs[Keys.DEBUG_WAV_DUMP] = updated.debugWavDump
             prefs[Keys.DIAGNOSTICS] = updated.diagnosticsEnabled
+            prefs[Keys.ONBOARDING_DONE] = updated.onboardingCompleted
         }
     }
 
+    /** „Przywróć domyślne" dotyczy parametrów, nie tego, czy powitanie już było. */
     suspend fun resetToDefaults() {
-        update { NightVoxSettings.DEFAULTS }
+        update { NightVoxSettings.DEFAULTS.copy(onboardingCompleted = it.onboardingCompleted) }
     }
 
     private fun Preferences.toSettings(): NightVoxSettings {
@@ -82,6 +84,7 @@ class SettingsStore(private val context: Context) {
             keepScreenOn = this[Keys.KEEP_SCREEN_ON] ?: d.keepScreenOn,
             debugWavDump = this[Keys.DEBUG_WAV_DUMP] ?: d.debugWavDump,
             diagnosticsEnabled = this[Keys.DIAGNOSTICS] ?: d.diagnosticsEnabled,
+            onboardingCompleted = this[Keys.ONBOARDING_DONE] ?: d.onboardingCompleted,
         )
     }
 
@@ -106,5 +109,6 @@ class SettingsStore(private val context: Context) {
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val DEBUG_WAV_DUMP = booleanPreferencesKey("debug_wav_dump")
         val DIAGNOSTICS = booleanPreferencesKey("diagnostics_enabled")
+        val ONBOARDING_DONE = booleanPreferencesKey("onboarding_completed")
     }
 }

@@ -47,6 +47,8 @@ data class NightVoxSettings(
     /** Dump całej sesji do WAV — do debugowania progów, zjada ok. 115 MB/h. */
     val debugWavDump: Boolean = false,
     val diagnosticsEnabled: Boolean = true,
+    /** Czy pierwsze uruchomienie zostało przeprowadzone do końca. */
+    val onboardingCompleted: Boolean = false,
 ) {
     fun toGateConfig(): GateConfig = GateConfig(
         triggerDeltaDb = triggerDeltaDb,

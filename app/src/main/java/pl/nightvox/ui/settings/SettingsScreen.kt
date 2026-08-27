@@ -31,17 +31,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.roundToInt
 import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.ParameterSlider
 import pl.nightvox.ui.components.ScreenHeader
 import pl.nightvox.ui.components.SectionHeader
+import pl.nightvox.ui.components.rememberHaptics
 import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 import pl.nightvox.util.Sharing
 import pl.nightvox.util.SystemChecks
-import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -53,6 +54,7 @@ fun SettingsScreen(
     val storage by viewModel.storage.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val haptics = rememberHaptics()
 
     LaunchedEffect(message) {
         message?.let {
@@ -350,9 +352,19 @@ fun SettingsScreen(
                     "że nagrywanie działa: nagrywanie siebie jest legalne, cudzych wypowiedzi bez wiedzy już niekoniecznie.",
                 tone = NoticeTone.INFO,
             )
+            Spacer(Modifier.height(Spacing.medium))
+            Text(
+                "Krój pisma: Inter (SIL Open Font License 1.1), przycięty do znaków używanych " +
+                    "w aplikacji. Pełna treść licencji leży w pliku assets/inter_OFL.txt.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = viewModel::resetToDefaults, modifier = Modifier.fillMaxWidth()) {
+            Spacer(Modifier.height(Spacing.large))
+            Button(
+                onClick = { haptics.reject(); viewModel.resetToDefaults() },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text("Przywróć domyślne")
             }
             Spacer(Modifier.height(32.dp))

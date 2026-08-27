@@ -102,6 +102,15 @@ class ClipRepository(
         sessionDao.refreshClipCount(clip.sessionId)
     }
 
+    /**
+     * Ręczne przeniesienie do kosza. Plik zostaje — kosz ma własną, krótszą retencję, więc
+     * to jest cofalne przez kilka dni, w przeciwieństwie do [deleteClip].
+     */
+    suspend fun moveToDiscarded(clip: ClipEntity) {
+        clipDao.discard(clip.id, DISCARD_REASON_MANUAL)
+        sessionDao.refreshClipCount(clip.sessionId)
+    }
+
     suspend fun clearDiscarded(): Int {
         var deleted = 0
         for (clip in clipDao.allDiscarded()) {
@@ -219,5 +228,8 @@ class ClipRepository(
 
         /** Ten sam powód sprzed wycofania Silero — zostaje, bo takie wiersze są w bazie. */
         const val DISCARD_REASON_LOW_VAD = "LOW_VAD"
+
+        /** Do kosza ręcznie, gestem na liście. */
+        const val DISCARD_REASON_MANUAL = "MANUAL"
     }
 }

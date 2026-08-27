@@ -6,12 +6,16 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -64,6 +68,7 @@ import pl.nightvox.ui.components.NightCard
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.StatTile
+import pl.nightvox.ui.components.rememberHaptics
 import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 import pl.nightvox.util.Sharing
@@ -80,6 +85,7 @@ fun HomeScreen(
     val environment by viewModel.environment.collectAsStateWithLifecycle()
     val history by viewModel.levelHistory.collectAsStateWithLifecycle()
     val lastCrash by viewModel.lastCrash.collectAsStateWithLifecycle()
+    val haptics = rememberHaptics()
 
     var hasMicPermission by remember { mutableStateOf(context.hasPermission(Manifest.permission.RECORD_AUDIO)) }
     var hasNotificationPermission by remember { mutableStateOf(context.hasNotificationPermission()) }
@@ -115,34 +121,44 @@ fun HomeScreen(
             .padding(horizontal = Spacing.screen),
     ) {
         Spacer(Modifier.height(Spacing.section))
-        Text(
-            text = if (state.isRunning) "SESJA TRWA" else "NIGHTVOX",
-            style = MaterialTheme.typography.labelSmall,
-            color = if (state.isRunning) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
-        Spacer(Modifier.height(Spacing.small))
-        if (state.isRunning) {
-            Text(
-                text = Format.duration(nowMs - state.startedAtMs),
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-        } else {
-            Text(
-                text = "Nasłuch wyłączony",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-            Spacer(Modifier.height(Spacing.tiny))
-            Text(
-                text = "Nagrywa tylko zdarzenia dźwiękowe, nie całą noc.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        // Przejście „wyłączony ↔ trwa" jest zmianą trybu, nie podmianą napisu — stąd
+        // przenikanie zamiast skoku.
+        AnimatedContent(
+            targetState = state.isRunning,
+            transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(140)) },
+            label = "hero",
+        ) { running ->
+            Column {
+                Text(
+                    text = if (running) "SESJA TRWA" else "NIGHTVOX",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (running) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                Spacer(Modifier.height(Spacing.small))
+                if (running) {
+                    Text(
+                        text = Format.duration(nowMs - state.startedAtMs),
+                        style = MaterialTheme.typography.displayLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                } else {
+                    Text(
+                        text = "Nasłuch wyłączony",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    Spacer(Modifier.height(Spacing.tiny))
+                    Text(
+                        text = "Nagrywa tylko zdarzenia dźwiękowe, nie całą noc.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(Spacing.section))
@@ -157,9 +173,17 @@ fun HomeScreen(
                         add(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 }
-                if (missing.isEmpty()) RecorderService.start(context) else permissionLauncher.launch(missing.toTypedArray())
+                if (missing.isEmpty()) {
+                    haptics.confirm()
+                    RecorderService.start(context)
+                } else {
+                    permissionLauncher.launch(missing.toTypedArray())
+                }
             },
-            onStop = { RecorderService.stop(context) },
+            onStop = {
+                haptics.end()
+                RecorderService.stop(context)
+            },
         )
 
         Spacer(Modifier.height(Spacing.screen))
@@ -209,7 +233,7 @@ fun HomeScreen(
 
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.medium)) {
             OutlinedButton(
-                onClick = onOpenCalibration,
+                onClick = { haptics.tick(); onOpenCalibration() },
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = MaterialTheme.shapes.medium,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -219,7 +243,7 @@ fun HomeScreen(
                 Text("Kalibracja")
             }
             OutlinedButton(
-                onClick = onOpenSettings,
+                onClick = { haptics.tick(); onOpenSettings() },
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = MaterialTheme.shapes.medium,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),

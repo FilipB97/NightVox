@@ -1,5 +1,7 @@
 package pl.nightvox.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,6 +63,11 @@ fun LiveLevelMeter(
     val idleColor = MaterialTheme.colorScheme.primary
     val gridColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.07f)
     val traceColor = if (isRecording) activeColor else idleColor
+
+    // Tło i próg pełzają przez całą noc o ułamki decybela. Bez animacji linie drgają skokowo
+    // przy każdym odświeżeniu, co wygląda na błąd pomiaru, a nie na powolny dryf.
+    val animatedFloor by animateFloatAsState(floorDb, tween(400), label = "floor")
+    val animatedThreshold by animateFloatAsState(thresholdDb, tween(400), label = "threshold")
 
     Column(modifier) {
         Canvas(
@@ -118,15 +126,15 @@ fun LiveLevelMeter(
 
             drawLine(
                 color = floorColor,
-                start = Offset(0f, yFor(floorDb)),
-                end = Offset(size.width, yFor(floorDb)),
+                start = Offset(0f, yFor(animatedFloor)),
+                end = Offset(size.width, yFor(animatedFloor)),
                 strokeWidth = 1.5f,
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 10f)),
             )
             drawLine(
                 color = thresholdColor,
-                start = Offset(0f, yFor(thresholdDb)),
-                end = Offset(size.width, yFor(thresholdDb)),
+                start = Offset(0f, yFor(animatedThreshold)),
+                end = Offset(size.width, yFor(animatedThreshold)),
                 strokeWidth = 2f,
             )
         }
