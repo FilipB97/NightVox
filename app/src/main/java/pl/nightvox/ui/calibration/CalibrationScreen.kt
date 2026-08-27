@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.ui.components.NightCard
+import pl.nightvox.ui.components.rememberHaptics
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.ParameterSlider
@@ -48,6 +49,7 @@ fun CalibrationScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val haptics = rememberHaptics()
 
     Scaffold(
         topBar = {
@@ -100,7 +102,7 @@ fun CalibrationScreen(
                 )
 
                 CalibrationPhase.IDLE -> Button(
-                    onClick = viewModel::startFloorMeasurement,
+                    onClick = { haptics.confirm(); viewModel.startFloorMeasurement() },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Zmierz tło (15 s)") }
 
@@ -141,7 +143,7 @@ fun CalibrationScreen(
                         Spacer(Modifier.height(12.dp))
                     }
                     Button(
-                        onClick = viewModel::startVerification,
+                        onClick = { haptics.confirm(); viewModel.startVerification() },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (state.phase == CalibrationPhase.VERIFIED) "Powtórz test (5 s)" else "Test mowy (5 s)") }
                 }
@@ -172,7 +174,7 @@ fun CalibrationScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 Button(
-                    onClick = { viewModel.applySuggestion(onBack) },
+                    onClick = { haptics.confirm(); viewModel.applySuggestion(onBack) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Zapisz próg i wróć") }
             }
