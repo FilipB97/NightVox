@@ -8,6 +8,7 @@ import pl.nightvox.NightVoxApp
 import pl.nightvox.ui.calibration.CalibrationViewModel
 import pl.nightvox.ui.clip.ClipsViewModel
 import pl.nightvox.ui.home.HomeViewModel
+import pl.nightvox.ui.onboarding.OnboardingViewModel
 import pl.nightvox.ui.sessions.SessionsViewModel
 import pl.nightvox.ui.settings.SettingsViewModel
 
@@ -21,4 +22,5 @@ val NightVoxViewModelFactory = viewModelFactory {
     initializer { SessionsViewModel(app.container) }
     initializer { ClipsViewModel(app.container) }
     initializer { CalibrationViewModel(app) }
+    initializer { OnboardingViewModel(app.container) }
 }

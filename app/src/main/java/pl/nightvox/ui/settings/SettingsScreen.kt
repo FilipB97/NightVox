@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.roundToInt
 import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
@@ -42,7 +43,6 @@ import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 import pl.nightvox.util.Sharing
 import pl.nightvox.util.SystemChecks
-import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(

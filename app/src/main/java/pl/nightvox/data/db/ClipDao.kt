@@ -45,6 +45,10 @@ interface ClipDao {
     @Query("UPDATE clips SET isDiscarded = 0, discardReason = NULL WHERE id = :id")
     suspend fun restore(id: String)
 
+    /** Odwrotność [restore]: ręczne przeniesienie do kosza, bez kasowania pliku. */
+    @Query("UPDATE clips SET isDiscarded = 1, discardReason = :reason WHERE id = :id")
+    suspend fun discard(id: String, reason: String)
+
     @Query("UPDATE clips SET transcript = :transcript WHERE id = :id")
     suspend fun setTranscript(id: String, transcript: String?)
 

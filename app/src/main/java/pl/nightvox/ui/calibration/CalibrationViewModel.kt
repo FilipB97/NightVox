@@ -2,6 +2,8 @@ package pl.nightvox.ui.calibration
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlin.math.ceil
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,11 +15,9 @@ import pl.nightvox.NightVoxApp
 import pl.nightvox.audio.AudioCapture
 import pl.nightvox.audio.Frame
 import pl.nightvox.audio.GateConfig
-import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.audio.LevelMeter
 import pl.nightvox.audio.speech.SpeechAnalyzer
-import kotlin.math.ceil
-import kotlin.math.roundToInt
+import pl.nightvox.data.NightVoxSettings
 
 enum class CalibrationPhase {
     IDLE,

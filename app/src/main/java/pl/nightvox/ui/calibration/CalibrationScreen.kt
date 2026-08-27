@@ -33,12 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.nightvox.data.NightVoxSettings
 import pl.nightvox.ui.components.NightCard
-import pl.nightvox.ui.components.rememberHaptics
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.ParameterSlider
 import pl.nightvox.ui.components.SectionHeader
 import pl.nightvox.ui.components.StatTile
+import pl.nightvox.ui.components.rememberHaptics
 import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 

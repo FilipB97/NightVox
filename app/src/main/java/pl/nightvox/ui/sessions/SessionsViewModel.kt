@@ -2,6 +2,7 @@ package pl.nightvox.ui.sessions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -18,7 +19,6 @@ import pl.nightvox.data.SessionExporter
 import pl.nightvox.data.db.ClipEntity
 import pl.nightvox.data.db.SessionEntity
 import pl.nightvox.data.db.SessionWithStats
-import java.io.File
 
 class SessionsViewModel(private val container: AppContainer) : ViewModel() {
 

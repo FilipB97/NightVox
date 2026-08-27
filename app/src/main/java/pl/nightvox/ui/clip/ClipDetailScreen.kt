@@ -42,14 +42,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import pl.nightvox.ui.components.NightCard
-import pl.nightvox.ui.components.rememberHaptics
 import pl.nightvox.ui.components.EmptyState
+import pl.nightvox.ui.components.NightCard
 import pl.nightvox.ui.components.NoticeCard
 import pl.nightvox.ui.components.NoticeTone
 import pl.nightvox.ui.components.SectionHeader
 import pl.nightvox.ui.components.StatTile
 import pl.nightvox.ui.components.WaveformView
+import pl.nightvox.ui.components.clipPlayKey
+import pl.nightvox.ui.components.rememberHaptics
+import pl.nightvox.ui.components.sharedWith
 import pl.nightvox.ui.theme.Spacing
 import pl.nightvox.util.Format
 import pl.nightvox.util.Sharing
@@ -151,6 +153,8 @@ fun ClipDetailScreen(
                             "Tak wygląda oddech (szum szerokopasmowy bez okresowości) i chrapanie " +
                             "(buczenie poniżej 90 Hz). Odsłuchaj: jeśli to jednak wypowiedź, obniż próg mowy " +
                             "w ustawieniach i przywróć klip."
+                        "MANUAL" -> "Odłożony do kosza ręcznie, gestem na liście. Plik został — " +
+                            "kosz ma własną, krótszą retencję, więc jest jeszcze czas, żeby zmienić zdanie."
                         "LOW_VAD" -> "Bramka przepuściła, ale Silero VAD nie uznał tego za mowę " +
                             "(${current.clip.vadScore?.let { Format.score(it) } ?: "—"}). " +
                             "Wpis z wcześniejszej wersji aplikacji."
@@ -191,7 +195,9 @@ fun ClipDetailScreen(
                         onClick = { haptics.tick(); viewModel.playPause(current.clip) },
                         enabled = current.file.isFile,
                         shape = CircleShape,
-                        modifier = Modifier.size(64.dp),
+                        modifier = Modifier
+                            .sharedWith(clipPlayKey(current.clip.id))
+                            .size(64.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                     ) {
                         Icon(
