@@ -42,6 +42,20 @@ poprzednich. Nie da się natomiast zainstalować APK z CI na wierzch zbudowanego
 odwrotnie) — to inne klucze, Android odrzuci taką aktualizację. Wtedy trzeba najpierw
 odinstalować starą wersję.
 
+### Ustawienia jako harmonijka
+
+Ekran urósł do **trzynastu suwaków, sześciu przełączników i dziesięciu przycisków** ułożonych
+płasko jeden pod drugim, każdy z akapitem wyjaśnienia. Wszystko było równie ważne i wszystko
+widoczne naraz, więc nie dawało się tego przejrzeć wzrokiem — a po pierwszym ustawieniu wraca
+się tu zwykle po jedną rzecz.
+
+Sekcje są teraz zwinięte, otwarta jest najwyżej jedna, a **zwinięty nagłówek pokazuje bieżące
+wartości**: „Czułość — 12 dB nad tłem · podłoga −50 dB". Dzięki temu odpowiada na pytanie „jak
+to jest ustawione" bez otwierania czegokolwiek. Osiem parametrów kształtu klipu (pre-roll,
+hangover, scalanie, minimum mowy…), których po kalibracji nikt nie rusza, siedzi w
+„Zaawansowanych". Kalibracja stoi nad harmonijką jako osobna karta, bo to jest właściwa
+odpowiedź na „jak ustawić próg" — suwaki są dla tych, którzy już wiedzą, co robią.
+
 ### Pierwsze uruchomienie
 
 1. Przyznaj mikrofon i notyfikacje.
@@ -121,6 +135,8 @@ z planu:
 | `miernik nie wywala sie na brzegowej historii` | Canvas: pusta i jednoelementowa historia poziomu |
 | `obwiednia nie wywala sie bez danych` | Canvas: klip bez pliku `.peaks` i z jednym kubełkiem |
 | `powitanie nie wraca po zresetowaniu ustawien` | „Przywróć domyślne" nie cofa na ekran powitalny |
+| `zwinieta sekcja pokazuje podsumowanie zamiast zawartosci` | harmonijka Ustawień: domyślnie zwinięta |
+| `klikniecie naglowka otwiera sekcje` | …i naprawdę się otwiera |
 | `szum o energii ponizej 80 hz nie jest tonem 400 hz` | regresja: oddech brany za dźwięk dźwięczny |
 | `podloga progu odcina zdarzenia zbyt ciche…` | `minTriggerDb` naprawdę ogranicza próg od dołu |
 | `tlo wokol zdarzenia nie zmienia oceny` | pre-roll i hangover nie wpływają na ocenę mowy |
@@ -341,6 +357,20 @@ Rzeczy, które nie zmieniają tego, co aplikacja robi, tylko to, jak się jej u�
   kosz trzyma plik przez kilka dni; nieodwracalne kasowanie zostało tylko w szczegółach klipu.
 - **Własny krój.** Inter w wersji zmiennej, przycięty `fonttools` do znaków, których ta
   aplikacja używa: 880 kB → 154 kB, z zachowaną osią grubości i funkcją `tnum`.
+
+### Ustawienia jako harmonijka
+
+Ekran urósł do **trzynastu suwaków, sześciu przełączników i dziesięciu przycisków** ułożonych
+płasko jeden pod drugim, każdy z akapitem wyjaśnienia. Wszystko było równie ważne i wszystko
+widoczne naraz, więc nie dawało się tego przejrzeć wzrokiem — a po pierwszym ustawieniu wraca
+się tu zwykle po jedną rzecz.
+
+Sekcje są teraz zwinięte, otwarta jest najwyżej jedna, a **zwinięty nagłówek pokazuje bieżące
+wartości**: „Czułość — 12 dB nad tłem · podłoga −50 dB". Dzięki temu odpowiada na pytanie „jak
+to jest ustawione" bez otwierania czegokolwiek. Osiem parametrów kształtu klipu (pre-roll,
+hangover, scalanie, minimum mowy…), których po kalibracji nikt nie rusza, siedzi w
+„Zaawansowanych". Kalibracja stoi nad harmonijką jako osobna karta, bo to jest właściwa
+odpowiedź na „jak ustawić próg" — suwaki są dla tych, którzy już wiedzą, co robią.
 
 ### Pierwsze uruchomienie
 
